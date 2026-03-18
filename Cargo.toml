@@ -12,5 +12,6 @@ toml = "0.8"
 directories = "6"
 dialoguer = { version = "0.11", features = ["fuzzy-select"] }
 askama = "0.12"
+clap_complete = "4"
 anyhow = "1"
 chrono = { version = "0.4", features = ["serde"] }

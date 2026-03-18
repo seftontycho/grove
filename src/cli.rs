@@ -1,5 +1,6 @@
 use crate::config::Shell;
 use clap::{Parser, Subcommand};
+use clap_complete::Shell as CompletionShell;
 
 #[derive(Parser)]
 #[command(
@@ -51,6 +52,12 @@ pub enum Cmd {
     /// Manage configuration
     #[command(subcommand)]
     Config(ConfigCmd),
+
+    /// Generate shell completions
+    Completions {
+        /// Shell to generate completions for
+        shell: CompletionShell,
+    },
 }
 
 #[derive(Subcommand)]

@@ -41,5 +41,6 @@ fn main() -> Result<()> {
             ConfigCmd::Show => cmd::config::show(),
             ConfigCmd::Edit => cmd::config::edit(),
         },
+        Cmd::Completions { shell } => cmd::completions::run(*shell),
     }
 }
