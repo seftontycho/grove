@@ -15,6 +15,7 @@ use db::Db;
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let config = Config::load()?;
+    config.warn_if_invalid();
     let db = Db::open(&config::db_path()?)?;
 
     match &cli.command {

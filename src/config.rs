@@ -99,12 +99,69 @@ impl Config {
         Ok(dirs.config_dir().join("config.toml"))
     }
 
+    /// Validate config and return any warnings.
+    /// Does not fail - issues are returned as warning strings.
+    pub fn validate(&self) -> Vec<ConfigWarning> {
+        let mut warnings = Vec::new();
+
+        for (name, entry) in &self.directories {
+            if !entry.path.exists() {
+                warnings.push(ConfigWarning::DirectoryMissing {
+                    name: name.clone(),
+                    path: entry.path.clone(),
+                });
+            } else if !entry.path.is_dir() {
+                warnings.push(ConfigWarning::NotADirectory {
+                    name: name.clone(),
+                    path: entry.path.clone(),
+                });
+            }
+        }
+
+        warnings
+    }
+
+    /// Print any config warnings to stderr.
+    pub fn warn_if_invalid(&self) {
+        for warning in self.validate() {
+            eprintln!("warning: {warning}");
+        }
+    }
+
     pub fn dir_names(&self) -> Vec<&str> {
         self.directories.keys().map(|s| s.as_str()).collect()
     }
 
     pub fn resolve_dir(&self, name: &str) -> Option<&Path> {
         self.directories.get(name).map(|e| e.path.as_path())
+    }
+}
+
+/// A non-fatal issue found during config validation.
+#[derive(Debug, Clone)]
+pub enum ConfigWarning {
+    DirectoryMissing { name: String, path: PathBuf },
+    NotADirectory { name: String, path: PathBuf },
+}
+
+impl fmt::Display for ConfigWarning {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ConfigWarning::DirectoryMissing { name, path } => {
+                write!(
+                    f,
+                    "configured directory '{name}' does not exist: {}",
+                    path.display()
+                )
+            }
+            ConfigWarning::NotADirectory { name, path } => {
+                write!(
+                    f,
+                    "configured directory '{name}' is not a directory: {}",
+                    path.display()
+                )
+            }
+        }
     }
 }
 
