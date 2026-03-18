@@ -1,5 +1,9 @@
 use anyhow::{bail, Result};
 use std::path::PathBuf;
+use tabled::settings::object::Rows;
+use tabled::settings::style::Style;
+use tabled::settings::Alignment;
+use tabled::settings::Modify;
 use tabled::{Table, Tabled};
 
 use crate::db::{Db, NewRepo, Repo, RepoFilter};
@@ -73,7 +77,10 @@ pub fn list(db: &Db) -> Result<()> {
     }
 
     let rows: Vec<RepoRow> = repos.iter().map(RepoRow::from).collect();
-    let table = Table::new(rows);
+    let mut table = Table::new(rows);
+    table
+        .with(Style::markdown())
+        .with(Modify::new(Rows::new(1..)).with(Alignment::left()));
     println!("{table}");
 
     Ok(())
