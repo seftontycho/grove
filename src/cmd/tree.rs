@@ -33,30 +33,81 @@ pub fn close(db: &Db, query: Option<&str>) -> Result<()> {
 
     let non_bare: Vec<_> = worktrees.iter().filter(|wt| !wt.is_bare).collect();
 
-    if non_bare.is_empty() {
-        println!("No worktrees to close for '{}'", repo.name);
+    // Also find orphaned zellij sessions (session exists but worktree is gone)
+    let sessions = zellij::list_sessions()?;
+    let session_prefix = format!("{}/", repo.name);
+    let orphaned_sessions: Vec<&zellij::Session> = sessions
+        .iter()
+        .filter(|s| {
+            s.name.starts_with(&session_prefix)
+                && !non_bare.iter().any(|wt| {
+                    let branch = extract_branch_name(wt.branch.as_deref());
+                    let expected = SessionName::new(&repo.name, &branch);
+                    s.name == expected.as_string()
+                })
+        })
+        .collect();
+
+    if non_bare.is_empty() && orphaned_sessions.is_empty() {
+        println!(
+            "No worktrees or orphaned sessions to close for '{}'",
+            repo.name
+        );
         return Ok(());
     }
 
-    let labels: Vec<String> = non_bare
-        .iter()
-        .map(|wt| wt.branch.as_deref().unwrap_or("(detached)").to_string())
-        .collect();
+    // Build selection list combining worktrees and orphaned sessions
+    let mut labels: Vec<String> = Vec::new();
+    let mut actions: Vec<CloseAction> = Vec::new();
+
+    for wt in &non_bare {
+        let branch = extract_branch_name(wt.branch.as_deref());
+        labels.push(branch.clone());
+        actions.push(CloseAction::WorktreeAndSession {
+            branch,
+            worktree_path: wt.path.clone(),
+        });
+    }
+
+    for session in &orphaned_sessions {
+        let label = format!("{} [orphaned session]", session.name);
+        labels.push(label);
+        actions.push(CloseAction::OrphanedSession {
+            session_name: session.name.clone(),
+        });
+    }
 
     let selection = FuzzySelect::new()
         .with_prompt("Select worktree to close")
         .items(&labels)
         .interact()?;
 
-    let wt = non_bare[selection];
-    let branch = labels[selection].clone();
+    match &actions[selection] {
+        CloseAction::WorktreeAndSession {
+            branch,
+            worktree_path,
+        } => {
+            // Kill zellij session (best-effort, may not exist)
+            let session_name = SessionName::new(&repo.name, branch);
+            let _ = zellij::kill_session(&session_name.as_string());
 
-    // Kill zellij session if it exists
-    let session_name = SessionName::new(&repo.name, &branch);
-    let _ = zellij::kill_session(&session_name.as_string());
+            // Remove worktree (force if directory is missing)
+            match git::worktree_remove(&repo.path, worktree_path) {
+                Ok(()) => {}
+                Err(_) => {
+                    // Worktree directory may already be gone, prune instead
+                    eprintln!("Worktree directory missing, pruning stale entry...");
+                    git::worktree_prune(&repo.path)?;
+                }
+            }
 
-    git::worktree_remove(&repo.path, &wt.path)?;
-    println!("Closed worktree '{branch}' for '{}'", repo.name);
+            println!("Closed worktree '{branch}' for '{}'", repo.name);
+        }
+        CloseAction::OrphanedSession { session_name } => {
+            zellij::kill_session(session_name)?;
+            println!("Killed orphaned session '{session_name}'");
+        }
+    }
 
     Ok(())
 }
@@ -66,6 +117,25 @@ pub fn prune(db: &Db, repo_query: Option<&str>) -> Result<()> {
     git::worktree_prune(&repo.path)?;
     println!("Pruned stale worktrees for '{}'", repo.name);
     Ok(())
+}
+
+/// Actions that `close` can perform.
+enum CloseAction {
+    /// Normal case: both worktree and (possibly) session exist.
+    WorktreeAndSession {
+        branch: String,
+        worktree_path: std::path::PathBuf,
+    },
+    /// Session exists but worktree is gone.
+    OrphanedSession { session_name: String },
+}
+
+/// Extract a short branch name from a full ref or return a fallback.
+fn extract_branch_name(branch_ref: Option<&str>) -> String {
+    match branch_ref {
+        Some(r) => r.strip_prefix("refs/heads/").unwrap_or(r).to_string(),
+        None => "(detached)".to_string(),
+    }
 }
 
 fn resolve_repo(db: &Db, query: Option<&str>) -> Result<Repo> {
