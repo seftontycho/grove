@@ -1,0 +1,16 @@
+[package]
+name = "grove"
+version = "0.1.0"
+edition = "2024"
+description = "A CLI tool for managing git worktrees and zellij sessions"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+directories = "6"
+dialoguer = { version = "0.11", features = ["fuzzy-select"] }
+askama = "0.12"
+anyhow = "1"
+chrono = { version = "0.4", features = ["serde"] }
