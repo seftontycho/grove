@@ -1,0 +1,18 @@
+layout {
+    cwd "{{ worktree_path }}"
+    pane split_direction="vertical" {
+        pane command="{{ shell }}" {
+            focus true
+            size "60%"
+        }
+        pane split_direction="horizontal" {
+            pane command="nvim" {
+                args "."
+                size "60%"
+            }
+            pane command="opencode" {
+                size "40%"
+            }
+        }
+    }
+}

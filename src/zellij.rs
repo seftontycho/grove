@@ -1,5 +1,6 @@
 use anyhow::{bail, Context, Result};
-use std::path::Path;
+use askama::Template;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// Represents the components of a zellij session name.
@@ -42,38 +43,50 @@ pub struct Session {
     pub status: SessionStatus,
 }
 
+/// Askama template for the zellij KDL layout.
+#[derive(Template)]
+#[template(path = "layout.kdl", escape = "none")]
+struct LayoutTemplate<'a> {
+    worktree_path: &'a str,
+    shell: &'a str,
+}
+
 /// Generate a KDL layout string for a worktree session.
-pub fn generate_layout(worktree_path: &Path, shell: &str) -> String {
-    let path = worktree_path.display();
-    format!(
-        r#"layout {{
-    cwd "{path}"
-    pane command="{shell}"
-    pane command="nvim" {{
-        args "."
-    }}
-    pane command="opencode"
-}}"#
-    )
+pub fn generate_layout(worktree_path: &Path, shell: &str) -> Result<String> {
+    let tmpl = LayoutTemplate {
+        worktree_path: &worktree_path.to_string_lossy(),
+        shell,
+    };
+    tmpl.render()
+        .context("Failed to render KDL layout template")
+}
+
+fn layout_path(name: &SessionName) -> PathBuf {
+    std::env::temp_dir().join(format!("grove-{}.kdl", name.as_string().replace('/', "-")))
+}
+
+/// Check if a zellij session with the given name already exists.
+pub fn session_exists(name: &str) -> Result<bool> {
+    let sessions = list_sessions()?;
+    Ok(sessions.iter().any(|s| s.name == name))
 }
 
 /// Create a new zellij session with the given layout.
 pub fn create_session(name: &SessionName, worktree_path: &Path, shell: &str) -> Result<()> {
-    let layout = generate_layout(worktree_path, shell);
+    let layout = generate_layout(worktree_path, shell)?;
+    let path = layout_path(name);
 
-    let layout_path =
-        std::env::temp_dir().join(format!("grove-{}.kdl", name.as_string().replace('/', "-")));
-    std::fs::write(&layout_path, &layout)
-        .with_context(|| format!("Failed to write layout to {}", layout_path.display()))?;
+    std::fs::write(&path, &layout)
+        .with_context(|| format!("Failed to write layout to {}", path.display()))?;
 
     let status = Command::new("zellij")
         .args(["--session", &name.as_string(), "--layout"])
-        .arg(&layout_path)
+        .arg(&path)
         .status()
         .context("Failed to run zellij")?;
 
     // Clean up temp layout
-    let _ = std::fs::remove_file(&layout_path);
+    let _ = std::fs::remove_file(&path);
 
     if !status.success() {
         bail!("zellij session creation failed for '{name}'");
