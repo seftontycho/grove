@@ -36,12 +36,6 @@ impl Db {
         Ok(())
     }
 
-    pub fn conn(&self) -> &Connection {
-        &self.conn
-    }
-
-    // -- Repo operations --
-
     pub fn add_repo(&self, repo: &NewRepo) -> Result<Repo> {
         repo::insert(&self.conn, repo)
     }
