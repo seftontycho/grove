@@ -22,15 +22,43 @@ pub fn run(db: &Db, config: &Config, query: Option<&str>, branch: Option<&str>) 
         None => select_or_create_branch(&repo)?,
     };
 
-    let worktree_path = git::worktree_add(&repo.path, &branch_name)?;
-    println!("Created worktree at {}", worktree_path.display());
-
     let session = SessionName::new(&repo.name, &branch_name);
+
+    // If a zellij session already exists, attach to it instead of creating
+    if zellij::session_exists(&session.as_string())? {
+        println!("Session '{session}' already exists, attaching...");
+        return zellij::attach_session(&session.as_string());
+    }
+
+    // Create worktree (or reuse if it already exists)
+    let worktree_path = match find_existing_worktree(&repo, &branch_name)? {
+        Some(path) => {
+            println!("Reusing existing worktree at {}", path.display());
+            path
+        }
+        None => {
+            let path = git::worktree_add(&repo.path, &branch_name)?;
+            println!("Created worktree at {}", path.display());
+            path
+        }
+    };
 
     println!("Starting zellij session '{session}'...");
     zellij::create_session(&session, &worktree_path, &config.shell.to_string())?;
 
     Ok(())
+}
+
+/// Check if a worktree for this branch already exists.
+fn find_existing_worktree(repo: &Repo, branch: &str) -> Result<Option<std::path::PathBuf>> {
+    let worktrees = git::worktree_list(&repo.path)?;
+    let needle = format!("refs/heads/{branch}");
+
+    let found = worktrees
+        .iter()
+        .find(|wt| wt.branch.as_deref() == Some(&needle) && !wt.is_bare);
+
+    Ok(found.map(|wt| wt.path.clone()))
 }
 
 fn select_repo(db: &Db) -> Result<Repo> {
