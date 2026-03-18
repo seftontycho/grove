@@ -48,17 +48,40 @@ pub fn list(db: &Db) -> Result<()> {
         return Ok(());
     }
 
+    // Calculate column widths
+    let name_width = repos.iter().map(|r| r.name.len()).max().unwrap_or(0);
+    let dir_width = repos
+        .iter()
+        .map(|r| r.directory.as_deref().unwrap_or("-").len())
+        .max()
+        .unwrap_or(0);
+    let score_width = repos
+        .iter()
+        .map(|r| format!("{:.0}", r.frecency).len())
+        .max()
+        .unwrap_or(0);
+
+    // Header
+    println!(
+        "{:<name_width$}  {:<dir_width$}  {:>score_width$}  {}",
+        "NAME", "DIR", "SCORE", "PATH",
+    );
+    println!(
+        "{:<name_width$}  {:<dir_width$}  {:>score_width$}  {}",
+        "-".repeat(name_width),
+        "-".repeat(dir_width),
+        "-".repeat(score_width),
+        "----",
+    );
+
     for repo in &repos {
-        let dir_label = repo
-            .directory
-            .as_deref()
-            .map(|d| format!(" [{d}]"))
-            .unwrap_or_default();
+        let dir = repo.directory.as_deref().unwrap_or("-");
         println!(
-            "{}{dir_label}  {}  (score: {:.0})",
+            "{:<name_width$}  {:<dir_width$}  {:>score_width$.0}  {}",
             repo.name,
+            dir,
+            repo.frecency,
             repo.path.display(),
-            repo.frecency
         );
     }
 
