@@ -47,6 +47,74 @@ impl std::str::FromStr for Shell {
     }
 }
 
+/// Which terminal multiplexer backend grove should use.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum MultiplexerBackend {
+    /// Use zellij.
+    Zellij,
+    /// Use tmux.
+    Tmux,
+    /// Detect automatically: prefer the currently-running multiplexer
+    /// ($ZELLIJ / $TMUX env vars), then fall back to whichever binary is
+    /// found on $PATH first (zellij wins on a tie).
+    #[default]
+    Auto,
+}
+
+impl MultiplexerBackend {
+    /// Resolve `Auto` to a concrete backend by inspecting the environment.
+    /// Returns `None` if `Auto` is set but neither multiplexer is available.
+    pub fn resolve(&self) -> Option<ResolvedBackend> {
+        match self {
+            MultiplexerBackend::Zellij => Some(ResolvedBackend::Zellij),
+            MultiplexerBackend::Tmux => Some(ResolvedBackend::Tmux),
+            MultiplexerBackend::Auto => {
+                // Prefer the currently-running multiplexer.
+                if std::env::var("ZELLIJ").is_ok() {
+                    return Some(ResolvedBackend::Zellij);
+                }
+                if std::env::var("TMUX").is_ok() {
+                    return Some(ResolvedBackend::Tmux);
+                }
+                // Fall back to whichever is on PATH.
+                if is_on_path("zellij") {
+                    return Some(ResolvedBackend::Zellij);
+                }
+                if is_on_path("tmux") {
+                    return Some(ResolvedBackend::Tmux);
+                }
+                None
+            }
+        }
+    }
+}
+
+impl fmt::Display for MultiplexerBackend {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MultiplexerBackend::Zellij => write!(f, "zellij"),
+            MultiplexerBackend::Tmux => write!(f, "tmux"),
+            MultiplexerBackend::Auto => write!(f, "auto"),
+        }
+    }
+}
+
+/// A concrete, resolved multiplexer (no `Auto` variant).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResolvedBackend {
+    Zellij,
+    Tmux,
+}
+
+fn is_on_path(binary: &str) -> bool {
+    std::process::Command::new("which")
+        .arg(binary)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DirectoryEntry {
     pub path: PathBuf,
@@ -57,6 +125,8 @@ pub struct Config {
     #[serde(default = "Shell::detect")]
     pub shell: Shell,
     #[serde(default)]
+    pub multiplexer: MultiplexerBackend,
+    #[serde(default)]
     pub directories: BTreeMap<String, DirectoryEntry>,
 }
 
@@ -64,6 +134,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             shell: Shell::detect(),
+            multiplexer: MultiplexerBackend::Auto,
             directories: BTreeMap::new(),
         }
     }

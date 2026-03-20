@@ -2,7 +2,7 @@
 name = "grove"
 version = "0.1.0"
 edition = "2024"
-description = "A CLI tool for managing git worktrees and zellij sessions"
+description = "A CLI tool for managing git worktrees and terminal multiplexer sessions"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
@@ -11,7 +11,7 @@ serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 directories = "6"
 dialoguer = { version = "0.11", features = ["fuzzy-select"] }
-askama = "0.12"
+minijinja = "2"
 clap_complete = "4"
 tabled = "0.20"
 anyhow = "1"
