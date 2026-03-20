@@ -1,0 +1,12 @@
+[book]
+title = "grove"
+description = "Instant worktrees. Instant sessions. Zero friction."
+authors = ["grove contributors"]
+language = "en"
+src = "src"
+
+[output.html]
+site-url = "/grove/"
+git-repository-url = "https://github.com/your-username/grove"
+git-repository-icon = "fa-github"
+edit-url-template = "https://github.com/your-username/grove/edit/main/docs/src/{path}"
