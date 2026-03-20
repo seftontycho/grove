@@ -1,12 +1,12 @@
 use anyhow::Result;
 
-use crate::zellij;
+use crate::multiplexer::Multiplexer;
 
-pub fn list() -> Result<()> {
-    let sessions = zellij::list_sessions()?;
+pub fn list(mux: &dyn Multiplexer) -> Result<()> {
+    let sessions = mux.list_sessions()?;
 
     if sessions.is_empty() {
-        println!("No active zellij sessions.");
+        println!("No active sessions.");
         return Ok(());
     }
 
@@ -17,6 +17,6 @@ pub fn list() -> Result<()> {
     Ok(())
 }
 
-pub fn attach(name: &str) -> Result<()> {
-    zellij::attach_session(name)
+pub fn attach(mux: &dyn Multiplexer, name: &str) -> Result<()> {
+    mux.attach_session(name)
 }

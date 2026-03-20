@@ -1,18 +1,14 @@
 layout {
     cwd "{{ worktree_path }}"
-    pane split_direction="vertical" {
-        pane command="{{ shell }}" {
-            focus true
-            size "60%"
+    tab name="shell" focus=true {
+        pane command="{{ shell }}" {}
+    }
+    tab name="editor" {
+        pane command="nvim" {
+            args "."
         }
-        pane split_direction="horizontal" {
-            pane command="nvim" {
-                args "."
-                size "60%"
-            }
-            pane command="opencode" {
-                size "40%"
-            }
-        }
+    }
+    tab name="opencode" {
+        pane command="opencode" {}
     }
 }

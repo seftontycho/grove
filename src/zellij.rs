@@ -1,152 +1,109 @@
 use anyhow::{bail, Context, Result};
-use askama::Template;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// Represents the components of a zellij session name.
-#[derive(Debug, Clone)]
-pub struct SessionName {
-    pub repo: String,
-    pub branch: String,
+use crate::multiplexer::{
+    load_template, render_template, Multiplexer, Session, SessionName, TemplateContext,
+};
+
+/// Built-in default KDL layout template (3 tabs: shell, editor, opencode).
+const DEFAULT_LAYOUT: &str = include_str!("../templates/layout.kdl");
+
+/// Zellij multiplexer backend.
+pub struct ZellijBackend;
+
+impl ZellijBackend {
+    pub fn new() -> Self {
+        Self
+    }
 }
 
-impl SessionName {
-    pub fn new(repo: &str, branch: &str) -> Self {
-        Self {
-            repo: repo.to_string(),
-            branch: branch.to_string(),
+impl Multiplexer for ZellijBackend {
+    fn create_session(&self, name: &SessionName, worktree_path: &Path, shell: &str) -> Result<()> {
+        let template = load_template("zellij.kdl", DEFAULT_LAYOUT)?;
+        let ctx = TemplateContext {
+            worktree_path: &worktree_path.to_string_lossy(),
+            shell,
+            session_name: &name.as_zellij_name(),
+            repo: &name.repo,
+            branch: &name.branch,
+        };
+        let layout =
+            render_template(&template, &ctx).context("Failed to render zellij layout template")?;
+
+        let path = layout_path(name);
+        std::fs::write(&path, &layout)
+            .with_context(|| format!("Failed to write layout to {}", path.display()))?;
+
+        let status = Command::new("zellij")
+            .args(["--session", &name.as_zellij_name(), "--layout"])
+            .arg(&path)
+            .status()
+            .context("Failed to run zellij")?;
+
+        // Clean up temp layout file regardless of outcome.
+        let _ = std::fs::remove_file(&path);
+
+        if !status.success() {
+            bail!("zellij session creation failed for '{name}'");
         }
+
+        Ok(())
     }
 
-    pub fn as_string(&self) -> String {
-        format!("{}/{}", self.repo, self.branch)
+    fn list_sessions(&self) -> Result<Vec<Session>> {
+        let output = Command::new("zellij")
+            .args(["list-sessions", "--short"])
+            .output()
+            .context("Failed to run zellij list-sessions")?;
+
+        if !output.status.success() {
+            // zellij returns non-zero when no sessions exist.
+            return Ok(Vec::new());
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let sessions = stdout
+            .lines()
+            .filter(|l| !l.is_empty())
+            .map(|l| Session {
+                name: l.trim().to_string(),
+            })
+            .collect();
+
+        Ok(sessions)
     }
-}
 
-impl std::fmt::Display for SessionName {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}/{}", self.repo, self.branch)
+    fn attach_session(&self, name: &str) -> Result<()> {
+        let status = Command::new("zellij")
+            .args(["attach", name])
+            .status()
+            .context("Failed to run zellij attach")?;
+
+        if !status.success() {
+            bail!("Failed to attach to zellij session '{name}'");
+        }
+
+        Ok(())
     }
-}
 
-/// Status of a zellij session.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SessionStatus {
-    Active,
-    Exited,
-}
+    fn kill_session(&self, name: &str) -> Result<()> {
+        let status = Command::new("zellij")
+            .args(["kill-session", name])
+            .status()
+            .context("Failed to run zellij kill-session")?;
 
-/// A zellij session as reported by `zellij list-sessions`.
-#[derive(Debug, Clone)]
-pub struct Session {
-    pub name: String,
-    pub status: SessionStatus,
-}
+        if !status.success() {
+            bail!("Failed to kill zellij session '{name}'");
+        }
 
-/// Askama template for the zellij KDL layout.
-#[derive(Template)]
-#[template(path = "layout.kdl", escape = "none")]
-struct LayoutTemplate<'a> {
-    worktree_path: &'a str,
-    shell: &'a str,
-}
-
-/// Generate a KDL layout string for a worktree session.
-pub fn generate_layout(worktree_path: &Path, shell: &str) -> Result<String> {
-    let tmpl = LayoutTemplate {
-        worktree_path: &worktree_path.to_string_lossy(),
-        shell,
-    };
-    tmpl.render()
-        .context("Failed to render KDL layout template")
+        Ok(())
+    }
 }
 
 fn layout_path(name: &SessionName) -> PathBuf {
-    std::env::temp_dir().join(format!("grove-{}.kdl", name.as_string().replace('/', "-")))
-}
-
-/// Check if a zellij session with the given name already exists.
-pub fn session_exists(name: &str) -> Result<bool> {
-    let sessions = list_sessions()?;
-    Ok(sessions.iter().any(|s| s.name == name))
-}
-
-/// Create a new zellij session with the given layout.
-pub fn create_session(name: &SessionName, worktree_path: &Path, shell: &str) -> Result<()> {
-    let layout = generate_layout(worktree_path, shell)?;
-    let path = layout_path(name);
-
-    std::fs::write(&path, &layout)
-        .with_context(|| format!("Failed to write layout to {}", path.display()))?;
-
-    let status = Command::new("zellij")
-        .args(["--session", &name.as_string(), "--layout"])
-        .arg(&path)
-        .status()
-        .context("Failed to run zellij")?;
-
-    // Clean up temp layout
-    let _ = std::fs::remove_file(&path);
-
-    if !status.success() {
-        bail!("zellij session creation failed for '{name}'");
-    }
-
-    Ok(())
-}
-
-/// List active zellij sessions.
-pub fn list_sessions() -> Result<Vec<Session>> {
-    let output = Command::new("zellij")
-        .args(["list-sessions", "--short"])
-        .output()
-        .context("Failed to run zellij list-sessions")?;
-
-    if !output.status.success() {
-        // zellij returns non-zero if no sessions exist
-        return Ok(Vec::new());
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let sessions = stdout
-        .lines()
-        .filter(|l| !l.is_empty())
-        .map(|l| {
-            let name = l.trim().to_string();
-            Session {
-                name,
-                status: SessionStatus::Active,
-            }
-        })
-        .collect();
-
-    Ok(sessions)
-}
-
-/// Attach to an existing zellij session.
-pub fn attach_session(name: &str) -> Result<()> {
-    let status = Command::new("zellij")
-        .args(["attach", name])
-        .status()
-        .context("Failed to run zellij attach")?;
-
-    if !status.success() {
-        bail!("Failed to attach to zellij session '{name}'");
-    }
-
-    Ok(())
-}
-
-/// Kill a zellij session.
-pub fn kill_session(name: &str) -> Result<()> {
-    let status = Command::new("zellij")
-        .args(["kill-session", name])
-        .status()
-        .context("Failed to run zellij kill-session")?;
-
-    if !status.success() {
-        bail!("Failed to kill zellij session '{name}'");
-    }
-
-    Ok(())
+    std::env::temp_dir().join(format!(
+        "grove-{}.kdl",
+        name.as_zellij_name().replace('/', "-")
+    ))
 }

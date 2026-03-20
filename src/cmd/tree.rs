@@ -3,7 +3,7 @@ use dialoguer::FuzzySelect;
 
 use crate::db::{Db, Repo, RepoFilter, RepoStatus};
 use crate::git;
-use crate::zellij::{self, SessionName};
+use crate::multiplexer::{Multiplexer, Session, SessionName};
 
 pub fn list(db: &Db, repo_query: Option<&str>) -> Result<()> {
     let repo = resolve_repo(db, repo_query)?;
@@ -27,23 +27,22 @@ pub fn list(db: &Db, repo_query: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-pub fn close(db: &Db, query: Option<&str>) -> Result<()> {
+pub fn close(db: &Db, mux: &dyn Multiplexer, query: Option<&str>) -> Result<()> {
     let repo = resolve_repo(db, query)?;
     let worktrees = git::worktree_list(&repo.path)?;
 
     let non_bare: Vec<_> = worktrees.iter().filter(|wt| !wt.is_bare).collect();
 
-    // Also find orphaned zellij sessions (session exists but worktree is gone)
-    let sessions = zellij::list_sessions()?;
-    let session_prefix = format!("{}/", repo.name);
-    let orphaned_sessions: Vec<&zellij::Session> = sessions
+    // Find orphaned sessions: a session exists for this repo but its worktree is gone.
+    let all_sessions = mux.list_sessions()?;
+    let orphaned_sessions: Vec<&Session> = all_sessions
         .iter()
         .filter(|s| {
-            s.name.starts_with(&session_prefix)
+            is_repo_session(&repo.name, &s.name)
                 && !non_bare.iter().any(|wt| {
                     let branch = extract_branch_name(wt.branch.as_deref());
-                    let expected = SessionName::new(&repo.name, &branch);
-                    s.name == expected.as_string()
+                    let sn = SessionName::new(&repo.name, &branch);
+                    s.name == sn.as_zellij_name() || s.name == sn.as_tmux_name()
                 })
         })
         .collect();
@@ -56,7 +55,7 @@ pub fn close(db: &Db, query: Option<&str>) -> Result<()> {
         return Ok(());
     }
 
-    // Build selection list combining worktrees and orphaned sessions
+    // Build selection list combining worktrees and orphaned sessions.
     let mut labels: Vec<String> = Vec::new();
     let mut actions: Vec<CloseAction> = Vec::new();
 
@@ -87,15 +86,16 @@ pub fn close(db: &Db, query: Option<&str>) -> Result<()> {
             branch,
             worktree_path,
         } => {
-            // Kill zellij session (best-effort, may not exist)
-            let session_name = SessionName::new(&repo.name, branch);
-            let _ = zellij::kill_session(&session_name.as_string());
+            // Kill session (best-effort — may not exist).
+            let sn = SessionName::new(&repo.name, branch);
+            // Try both name formats; ignore errors since the session may not exist.
+            let _ = mux.kill_session(&sn.as_zellij_name());
+            let _ = mux.kill_session(&sn.as_tmux_name());
 
-            // Remove worktree (force if directory is missing)
+            // Remove worktree (force if directory is missing).
             match git::worktree_remove(&repo.path, worktree_path) {
                 Ok(()) => {}
                 Err(_) => {
-                    // Worktree directory may already be gone, prune instead
                     eprintln!("Worktree directory missing, pruning stale entry...");
                     git::worktree_prune(&repo.path)?;
                 }
@@ -104,7 +104,7 @@ pub fn close(db: &Db, query: Option<&str>) -> Result<()> {
             println!("Closed worktree '{branch}' for '{}'", repo.name);
         }
         CloseAction::OrphanedSession { session_name } => {
-            zellij::kill_session(session_name)?;
+            mux.kill_session(session_name)?;
             println!("Killed orphaned session '{session_name}'");
         }
     }
@@ -128,6 +128,14 @@ enum CloseAction {
     },
     /// Session exists but worktree is gone.
     OrphanedSession { session_name: String },
+}
+
+/// Returns true if `session_name` belongs to `repo`, in either the zellij
+/// (`repo/branch`) or tmux (`repo-branch`) naming convention.
+fn is_repo_session(repo: &str, session_name: &str) -> bool {
+    let zellij_prefix = format!("{}/", repo);
+    let tmux_prefix = format!("{}-", repo);
+    session_name.starts_with(&zellij_prefix) || session_name.starts_with(&tmux_prefix)
 }
 
 /// Extract a short branch name from a full ref or return a fallback.

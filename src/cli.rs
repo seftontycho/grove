@@ -6,7 +6,7 @@ use clap_complete::Shell as CompletionShell;
 #[command(
     name = "grove",
     version,
-    about = "Manage git worktrees and zellij sessions"
+    about = "Manage git worktrees and terminal multiplexer sessions"
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -29,7 +29,7 @@ pub enum Cmd {
         dir: Option<String>,
     },
 
-    /// Open a worktree and zellij session
+    /// Open a worktree and multiplexer session
     Open {
         /// Repo name or fuzzy query
         query: Option<String>,
@@ -45,7 +45,7 @@ pub enum Cmd {
     #[command(subcommand)]
     Tree(TreeCmd),
 
-    /// Manage zellij sessions
+    /// Manage multiplexer sessions
     #[command(subcommand)]
     Session(SessionCmd),
 
@@ -83,7 +83,7 @@ pub enum TreeCmd {
         /// Repo name or fuzzy query (interactive if omitted)
         repo: Option<String>,
     },
-    /// Close a worktree and its zellij session
+    /// Close a worktree and its multiplexer session
     Close {
         /// Repo name or fuzzy query (interactive if omitted)
         query: Option<String>,
@@ -97,7 +97,7 @@ pub enum TreeCmd {
 
 #[derive(Subcommand)]
 pub enum SessionCmd {
-    /// List active zellij sessions
+    /// List active multiplexer sessions
     List,
     /// Attach to an existing session
     Attach {

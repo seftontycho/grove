@@ -4,9 +4,15 @@ use dialoguer::FuzzySelect;
 use crate::config::Config;
 use crate::db::{Db, Repo, RepoFilter, RepoStatus};
 use crate::git;
-use crate::zellij::{self, SessionName};
+use crate::multiplexer::{Multiplexer, SessionName};
 
-pub fn run(db: &Db, config: &Config, query: Option<&str>, branch: Option<&str>) -> Result<()> {
+pub fn run(
+    db: &Db,
+    config: &Config,
+    mux: &dyn Multiplexer,
+    query: Option<&str>,
+    branch: Option<&str>,
+) -> Result<()> {
     let repo = match query {
         Some(q) => match db.find_repo(q)? {
             Some(r) => r,
@@ -24,13 +30,25 @@ pub fn run(db: &Db, config: &Config, query: Option<&str>, branch: Option<&str>) 
 
     let session = SessionName::new(&repo.name, &branch_name);
 
-    // If a zellij session already exists, attach to it instead of creating
-    if zellij::session_exists(&session.as_string())? {
+    // If a session already exists, attach to it instead of creating a new one.
+    // Each backend uses its own name format for the lookup.
+    let sessions = mux.list_sessions()?;
+    let exists = sessions
+        .iter()
+        .any(|s| s.name == session.as_zellij_name() || s.name == session.as_tmux_name());
+
+    if exists {
+        // Determine which name format the session was stored under.
+        let name = if sessions.iter().any(|s| s.name == session.as_zellij_name()) {
+            session.as_zellij_name()
+        } else {
+            session.as_tmux_name()
+        };
         println!("Session '{session}' already exists, attaching...");
-        return zellij::attach_session(&session.as_string());
+        return mux.attach_session(&name);
     }
 
-    // Create worktree (or reuse if it already exists)
+    // Create worktree (or reuse if it already exists).
     let worktree_path = match find_existing_worktree(&repo, &branch_name)? {
         Some(path) => {
             println!("Reusing existing worktree at {}", path.display());
@@ -43,8 +61,8 @@ pub fn run(db: &Db, config: &Config, query: Option<&str>, branch: Option<&str>) 
         }
     };
 
-    println!("Starting zellij session '{session}'...");
-    zellij::create_session(&session, &worktree_path, &config.shell.to_string())?;
+    println!("Starting session '{session}'...");
+    mux.create_session(&session, &worktree_path, &config.shell.to_string())?;
 
     Ok(())
 }
