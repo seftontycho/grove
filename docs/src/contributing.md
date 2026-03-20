@@ -5,7 +5,7 @@ Contributions are welcome. Please open an issue first to discuss significant cha
 ## Setup
 
 ```sh
-git clone https://github.com/your-username/grove
+git clone https://github.com/seftontycho/grove
 cd grove
 cargo build
 ```

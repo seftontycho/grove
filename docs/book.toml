@@ -7,6 +7,6 @@ src = "src"
 
 [output.html]
 site-url = "/grove/"
-git-repository-url = "https://github.com/your-username/grove"
+git-repository-url = "https://github.com/seftontycho/grove"
 git-repository-icon = "fab-github"
-edit-url-template = "https://github.com/your-username/grove/edit/main/docs/src/{path}"
+edit-url-template = "https://github.com/seftontycho/grove/edit/main/docs/src/{path}"

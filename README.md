@@ -12,7 +12,7 @@ grove pairs git worktrees with your terminal multiplexer ([zellij](https://zelli
 [Installation](#installation) •
 [Configuration](#configuration) •
 [Commands](#commands) •
-[Documentation](https://your-username.github.io/grove)
+[Documentation](https://seftontycho.github.io/grove)
 
 </div>
 
@@ -49,7 +49,7 @@ That's it. grove will ask you which repo and branch you want, create the worktre
 ## Installation
 
 ```sh
-cargo install --git https://github.com/your-username/grove
+cargo install --git https://github.com/seftontycho/grove
 ```
 
 ### From source
@@ -57,7 +57,7 @@ cargo install --git https://github.com/your-username/grove
 If you want to hack on grove locally:
 
 ```sh
-git clone https://github.com/your-username/grove
+git clone https://github.com/seftontycho/grove
 cd grove
 cargo install --path .
 ```
@@ -225,7 +225,7 @@ The layout templates are customisable — place your own at `~/.config/grove/tem
 Contributions are welcome. Please open an issue first to discuss significant changes.
 
 ```sh
-git clone https://github.com/your-username/grove
+git clone https://github.com/seftontycho/grove
 cd grove
 cargo build
 cargo test
