@@ -48,7 +48,7 @@ grove is for developers who:
 
 ```sh
 # Install
-cargo install --git https://github.com/your-username/grove
+cargo install --git https://github.com/seftontycho/grove
 
 # Set up the shell alias
 eval "$(grove init zsh)"

@@ -15,7 +15,7 @@ grove requires the following tools to be installed and available on your `$PATH`
 ### From GitHub (recommended)
 
 ```sh
-cargo install --git https://github.com/your-username/grove
+cargo install --git https://github.com/seftontycho/grove
 ```
 
 This compiles and installs the latest version from the `main` branch directly.
@@ -23,7 +23,7 @@ This compiles and installs the latest version from the `main` branch directly.
 To pin to a specific release tag:
 
 ```sh
-cargo install --git https://github.com/your-username/grove --tag v0.1.0
+cargo install --git https://github.com/seftontycho/grove --tag v0.1.0
 ```
 
 ### From source
@@ -31,7 +31,7 @@ cargo install --git https://github.com/your-username/grove --tag v0.1.0
 If you want to build from a local clone (useful for development):
 
 ```sh
-git clone https://github.com/your-username/grove
+git clone https://github.com/seftontycho/grove
 cd grove
 cargo install --path .
 ```
