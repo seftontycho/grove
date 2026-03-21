@@ -36,47 +36,22 @@ impl Multiplexer for ZellijBackend {
             .with_context(|| format!("Failed to write layout to {}", path.display()))?;
 
         let zellij_name = name.as_zellij_name();
-        let status = if std::env::var_os("ZELLIJ").is_some() {
-            // Already inside a zellij session — create a detached background
-            // session with the layout, then switch to it via the session-manager
-            // plugin pipe message.
-            let bg_status = Command::new("zellij")
-                .args(["--layout"])
+        if std::env::var_os("ZELLIJ").is_some() {
+            // Already inside a zellij session — pipe to zj-session-bar plugin
+            // which calls switch_session_with_layout via the zellij plugin API.
+            // The layout file must remain on disk until zellij reads it.
+            pipe_create_session(&zellij_name, &path)?;
+        } else {
+            let status = Command::new("zellij")
+                .args(["-s", &zellij_name, "-n"])
                 .arg(&path)
-                .args(["attach", "-b", &zellij_name])
                 .status()
-                .context("Failed to create background zellij session")?;
+                .context("Failed to run zellij")?;
 
-            if !bg_status.success() {
-                let _ = std::fs::remove_file(&path);
+            let _ = std::fs::remove_file(&path);
+            if !status.success() {
                 bail!("zellij session creation failed for '{name}'");
             }
-
-            Command::new("zellij")
-                .args([
-                    "pipe",
-                    "--plugin",
-                    "zellij:session-manager",
-                    "--name",
-                    "switch_session",
-                    "--",
-                    &zellij_name,
-                ])
-                .status()
-                .context("Failed to switch to zellij session")?
-        } else {
-            Command::new("zellij")
-                .args(["-s", &zellij_name, "--layout"])
-                .arg(&path)
-                .status()
-                .context("Failed to run zellij")?
-        };
-
-        // Clean up temp layout file regardless of outcome.
-        let _ = std::fs::remove_file(&path);
-
-        if !status.success() {
-            bail!("zellij session creation failed for '{name}'");
         }
 
         Ok(())
@@ -106,23 +81,18 @@ impl Multiplexer for ZellijBackend {
     }
 
     fn attach_session(&self, name: &str) -> Result<()> {
-        let status = if std::env::var_os("ZELLIJ").is_some() {
-            Command::new("zellij")
-                .args(["action", "switch-session", name])
-                .status()
-                .context("Failed to run zellij action switch-session")?
+        if std::env::var_os("ZELLIJ").is_some() {
+            pipe_switch_session(name)
         } else {
-            Command::new("zellij")
+            let status = Command::new("zellij")
                 .args(["attach", name])
                 .status()
-                .context("Failed to run zellij attach")?
-        };
-
-        if !status.success() {
-            bail!("Failed to attach to zellij session '{name}'");
+                .context("Failed to run zellij attach")?;
+            if !status.success() {
+                bail!("Failed to attach to zellij session '{name}'");
+            }
+            Ok(())
         }
-
-        Ok(())
     }
 
     fn kill_session(&self, name: &str) -> Result<()> {
@@ -137,6 +107,62 @@ impl Multiplexer for ZellijBackend {
 
         Ok(())
     }
+}
+
+/// Resolve the zj-session-bar plugin URL for pipe commands.
+fn plugin_url() -> String {
+    // Check common plugin locations.
+    let candidates = [
+        directories::BaseDirs::new().map(|d| d.data_dir().join("zellij/plugins/zj-session-bar.wasm")),
+        Some(PathBuf::from("/usr/share/zellij/plugins/zj-session-bar.wasm")),
+    ];
+    for candidate in candidates.into_iter().flatten() {
+        if candidate.exists() {
+            return format!("file:{}", candidate.display());
+        }
+    }
+    // Fall back to name-only (works in layouts but may not work in pipe).
+    "zj-session-bar".to_string()
+}
+
+/// Send a `switch_session` pipe message to the zj-session-bar plugin.
+fn pipe_switch_session(session_name: &str) -> Result<()> {
+    let url = plugin_url();
+    let output = Command::new("zellij")
+        .args(["pipe", "--plugin", &url, "--name", "switch_session", "--", session_name])
+        .output()
+        .context("Failed to switch zellij session via pipe")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!("Failed to switch zellij session '{session_name}': {stderr}");
+    }
+    Ok(())
+}
+
+/// Send a `switch_session` pipe message with a layout file to create and switch.
+fn pipe_create_session(session_name: &str, layout_path: &Path) -> Result<()> {
+    let url = plugin_url();
+    let output = Command::new("zellij")
+        .args([
+            "pipe",
+            "--plugin",
+            &url,
+            "--name",
+            "switch_session",
+            "--args",
+            &format!("layout={}", layout_path.display()),
+            "--",
+            session_name,
+        ])
+        .output()
+        .context("Failed to create zellij session via pipe")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!("Failed to create zellij session '{session_name}': {stderr}");
+    }
+    Ok(())
 }
 
 fn layout_path(name: &SessionName) -> PathBuf {
