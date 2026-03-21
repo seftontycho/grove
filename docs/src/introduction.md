@@ -33,7 +33,7 @@ By default, both zellij and tmux sessions open with three named tabs/windows:
 | `editor` | `nvim .` |
 | `opencode` | `opencode` |
 
-These are just defaults — the layout is fully customisable. Place your own template at `~/.config/grove/templates/layout.kdl` (zellij) or `~/.config/grove/templates/tmux.sh` (tmux) and grove will use it instead.
+These are just defaults — the layout is fully customisable. Place your own template at `~/.config/grove/templates/zellij.kdl` (zellij) or `~/.config/grove/templates/tmux.sh` (tmux) and grove will use it instead.
 
 ## Who is grove for?
 

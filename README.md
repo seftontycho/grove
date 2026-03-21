@@ -218,7 +218,7 @@ grove stores repo metadata in a SQLite database (`~/.local/share/grove/grove.db`
 
 Both backends open a session with three named tabs/windows — `shell` (focused), `editor` (`nvim .`), and `opencode` — all with the working directory set to the worktree path.
 
-The layout templates are customisable — place your own at `~/.config/grove/templates/layout.kdl` (zellij) or `~/.config/grove/templates/tmux.sh` (tmux) and grove will use them instead of the built-in defaults. Templates are rendered with [minijinja](https://github.com/mitsuhiko/minijinja) and have access to `worktree_path`, `shell`, `session_name`, `repo`, and `branch` variables.
+The layout templates are customisable — place your own at `~/.config/grove/templates/zellij.kdl` (zellij) or `~/.config/grove/templates/tmux.sh` (tmux) and grove will use them instead of the built-in defaults. Templates are rendered with [minijinja](https://github.com/mitsuhiko/minijinja) and have access to `worktree_path`, `shell`, `session_name`, `repo`, and `branch` variables.
 
 ## Contributing
 

@@ -30,7 +30,7 @@ Place a custom template file in your grove config directory and grove will use i
 
 | Multiplexer | Template path |
 |-------------|---------------|
-| zellij | `~/.config/grove/templates/layout.kdl` |
+| zellij | `~/.config/grove/templates/zellij.kdl` |
 | tmux | `~/.config/grove/templates/tmux.sh` |
 
 Templates are rendered using [minijinja](https://docs.rs/minijinja/latest/minijinja/). The syntax is a subset of [Jinja2](https://jinja.palletsprojects.com/en/stable/templates/) — refer to the [minijinja template documentation](https://docs.rs/minijinja/latest/minijinja/syntax/index.html) for the full syntax reference.

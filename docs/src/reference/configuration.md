@@ -86,7 +86,7 @@ Layout template files are not part of `config.toml` but live alongside it:
 
 | File | Purpose |
 |------|---------|
-| `<config_dir>/grove/templates/layout.kdl` | Custom zellij layout |
+| `<config_dir>/grove/templates/zellij.kdl` | Custom zellij layout |
 | `<config_dir>/grove/templates/tmux.sh` | Custom tmux setup script |
 
 If these files exist grove uses them instead of the built-in defaults. See [Session Layout](./layout.md) for the full template variable reference.

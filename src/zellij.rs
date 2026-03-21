@@ -7,7 +7,7 @@ use crate::multiplexer::{
 };
 
 /// Built-in default KDL layout template (3 tabs: shell, editor, opencode).
-const DEFAULT_LAYOUT: &str = include_str!("../templates/layout.kdl");
+const DEFAULT_LAYOUT: &str = include_str!("../templates/zellij.kdl");
 
 /// Zellij multiplexer backend.
 pub struct ZellijBackend;
@@ -35,11 +35,42 @@ impl Multiplexer for ZellijBackend {
         std::fs::write(&path, &layout)
             .with_context(|| format!("Failed to write layout to {}", path.display()))?;
 
-        let status = Command::new("zellij")
-            .args(["--session", &name.as_zellij_name(), "--layout"])
-            .arg(&path)
-            .status()
-            .context("Failed to run zellij")?;
+        let zellij_name = name.as_zellij_name();
+        let status = if std::env::var_os("ZELLIJ").is_some() {
+            // Already inside a zellij session — create a detached background
+            // session with the layout, then switch to it via the session-manager
+            // plugin pipe message.
+            let bg_status = Command::new("zellij")
+                .args(["--layout"])
+                .arg(&path)
+                .args(["attach", "-b", &zellij_name])
+                .status()
+                .context("Failed to create background zellij session")?;
+
+            if !bg_status.success() {
+                let _ = std::fs::remove_file(&path);
+                bail!("zellij session creation failed for '{name}'");
+            }
+
+            Command::new("zellij")
+                .args([
+                    "pipe",
+                    "--plugin",
+                    "zellij:session-manager",
+                    "--name",
+                    "switch_session",
+                    "--",
+                    &zellij_name,
+                ])
+                .status()
+                .context("Failed to switch to zellij session")?
+        } else {
+            Command::new("zellij")
+                .args(["-s", &zellij_name, "--layout"])
+                .arg(&path)
+                .status()
+                .context("Failed to run zellij")?
+        };
 
         // Clean up temp layout file regardless of outcome.
         let _ = std::fs::remove_file(&path);
@@ -75,10 +106,17 @@ impl Multiplexer for ZellijBackend {
     }
 
     fn attach_session(&self, name: &str) -> Result<()> {
-        let status = Command::new("zellij")
-            .args(["attach", name])
-            .status()
-            .context("Failed to run zellij attach")?;
+        let status = if std::env::var_os("ZELLIJ").is_some() {
+            Command::new("zellij")
+                .args(["action", "switch-session", name])
+                .status()
+                .context("Failed to run zellij action switch-session")?
+        } else {
+            Command::new("zellij")
+                .args(["attach", name])
+                .status()
+                .context("Failed to run zellij attach")?
+        };
 
         if !status.success() {
             bail!("Failed to attach to zellij session '{name}'");

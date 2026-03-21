@@ -61,7 +61,7 @@ grove also looks for layout template overrides in the config directory:
 
 | File | Purpose |
 |------|---------|
-| `~/.config/grove/templates/layout.kdl` | Custom zellij layout |
+| `~/.config/grove/templates/zellij.kdl` | Custom zellij layout |
 | `~/.config/grove/templates/tmux.sh` | Custom tmux layout script |
 
 See [Session Layout](./reference/layout.md) for full details.
