@@ -20,11 +20,21 @@ impl ZellijBackend {
 
 impl Multiplexer for ZellijBackend {
     fn create_session(&self, name: &SessionName, worktree_path: &Path, shell: &str) -> Result<()> {
+        let zellij_name = name.as_zellij_name();
+
+        // Delete any dead/exited session with the same name so we can create a
+        // fresh one. `delete-session` is required for exited sessions —
+        // `kill-session` only works on live sessions. A non-existent name
+        // returns non-zero, so we intentionally ignore the exit status.
+        let _ = Command::new("zellij")
+            .args(["delete-session", &zellij_name])
+            .output();
+
         let template = load_template("zellij.kdl", DEFAULT_LAYOUT)?;
         let ctx = TemplateContext {
             worktree_path: &worktree_path.to_string_lossy(),
             shell,
-            session_name: &name.as_zellij_name(),
+            session_name: &zellij_name,
             repo: &name.repo,
             branch: &name.branch,
         };
@@ -35,7 +45,6 @@ impl Multiplexer for ZellijBackend {
         std::fs::write(&path, &layout)
             .with_context(|| format!("Failed to write layout to {}", path.display()))?;
 
-        let zellij_name = name.as_zellij_name();
         if std::env::var_os("ZELLIJ").is_some() {
             // Already inside a zellij session — pipe to zj-session-bar plugin
             // which calls switch_session_with_layout via the zellij plugin API.
@@ -59,7 +68,7 @@ impl Multiplexer for ZellijBackend {
 
     fn list_sessions(&self) -> Result<Vec<Session>> {
         let output = Command::new("zellij")
-            .args(["list-sessions", "--short"])
+            .args(["list-sessions", "--no-formatting"])
             .output()
             .context("Failed to run zellij list-sessions")?;
 
@@ -72,8 +81,15 @@ impl Multiplexer for ZellijBackend {
         let sessions = stdout
             .lines()
             .filter(|l| !l.is_empty())
-            .map(|l| Session {
-                name: l.trim().to_string(),
+            // Skip dead/exited sessions — they cannot be switched to via the
+            // plugin pipe and will be cleaned up when a new session is created.
+            .filter(|l| !l.contains("EXITED"))
+            .filter_map(|l| {
+                // Format: "name [Created ...ago] (current)" or "name [Created ...ago]"
+                let name = l.split_whitespace().next()?;
+                Some(Session {
+                    name: name.to_string(),
+                })
             })
             .collect();
 
@@ -113,22 +129,34 @@ impl Multiplexer for ZellijBackend {
 fn plugin_url() -> String {
     // Prefer a local install if present, otherwise fetch from GitHub releases.
     let candidates = [
-        directories::BaseDirs::new().map(|d| d.data_dir().join("zellij/plugins/zj-session-bar.wasm")),
-        Some(PathBuf::from("/usr/share/zellij/plugins/zj-session-bar.wasm")),
+        directories::BaseDirs::new()
+            .map(|d| d.data_dir().join("zellij/plugins/zj-session-bar.wasm")),
+        Some(PathBuf::from(
+            "/usr/share/zellij/plugins/zj-session-bar.wasm",
+        )),
     ];
     for candidate in candidates.into_iter().flatten() {
         if candidate.exists() {
             return format!("file:{}", candidate.display());
         }
     }
-    "https://github.com/seftontycho/zj-session-bar/releases/latest/download/zj-session-bar.wasm".to_string()
+    "https://github.com/seftontycho/zj-session-bar/releases/latest/download/zj-session-bar.wasm"
+        .to_string()
 }
 
 /// Send a `switch_session` pipe message to the zj-session-bar plugin.
 fn pipe_switch_session(session_name: &str) -> Result<()> {
     let url = plugin_url();
     let output = Command::new("zellij")
-        .args(["pipe", "--plugin", &url, "--name", "switch_session", "--", session_name])
+        .args([
+            "pipe",
+            "--plugin",
+            &url,
+            "--name",
+            "switch_session",
+            "--",
+            session_name,
+        ])
         .output()
         .context("Failed to switch zellij session via pipe")?;
 
