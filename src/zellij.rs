@@ -111,7 +111,7 @@ impl Multiplexer for ZellijBackend {
 
 /// Resolve the zj-session-bar plugin URL for pipe commands.
 fn plugin_url() -> String {
-    // Check common plugin locations.
+    // Prefer a local install if present, otherwise fetch from GitHub releases.
     let candidates = [
         directories::BaseDirs::new().map(|d| d.data_dir().join("zellij/plugins/zj-session-bar.wasm")),
         Some(PathBuf::from("/usr/share/zellij/plugins/zj-session-bar.wasm")),
@@ -121,8 +121,7 @@ fn plugin_url() -> String {
             return format!("file:{}", candidate.display());
         }
     }
-    // Fall back to name-only (works in layouts but may not work in pipe).
-    "zj-session-bar".to_string()
+    "https://github.com/seftontycho/zj-session-bar/releases/latest/download/zj-session-bar.wasm".to_string()
 }
 
 /// Send a `switch_session` pipe message to the zj-session-bar plugin.
