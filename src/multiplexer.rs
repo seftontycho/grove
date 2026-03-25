@@ -98,14 +98,18 @@ impl SessionName {
     }
 
     /// Canonical form used by zellij: `repo:branch`.
-    /// Zellij does not allow `/` in session names.
+    /// Zellij does not allow `/` in session names, so `/` is replaced with `:`.
     pub fn as_zellij_name(&self) -> String {
-        format!("{}:{}", self.repo, self.branch)
+        let repo = self.repo.replace('/', ":");
+        let branch = self.branch.replace('/', ":");
+        format!("{}:{}", repo, branch)
     }
 
     /// Sanitized form used by tmux (no `/` allowed): `repo-branch`.
     pub fn as_tmux_name(&self) -> String {
-        format!("{}-{}", self.repo, self.branch)
+        let repo = self.repo.replace('/', "-");
+        let branch = self.branch.replace('/', "-");
+        format!("{}-{}", repo, branch)
     }
 }
 
