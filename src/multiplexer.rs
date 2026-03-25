@@ -97,9 +97,10 @@ impl SessionName {
         }
     }
 
-    /// Canonical form used by zellij: `repo/branch`.
+    /// Canonical form used by zellij: `repo:branch`.
+    /// Zellij does not allow `/` in session names.
     pub fn as_zellij_name(&self) -> String {
-        format!("{}/{}", self.repo, self.branch)
+        format!("{}:{}", self.repo, self.branch)
     }
 
     /// Sanitized form used by tmux (no `/` allowed): `repo-branch`.

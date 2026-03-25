@@ -57,7 +57,7 @@ src/
     └── completions.rs  # grove completions
 
 templates/
-├── layout.kdl       # Default zellij layout (minijinja)
+├── zellij.kdl       # Default zellij layout (minijinja)
 └── tmux.sh          # Default tmux setup script (minijinja)
 ```
 
