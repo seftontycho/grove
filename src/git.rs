@@ -1,6 +1,6 @@
 use anyhow::{bail, Context, Result};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 /// On-disk layout of a grove-managed repository.
 #[derive(Debug, Clone)]
@@ -53,6 +53,89 @@ impl RepoLayout {
     pub fn worktree_path(&self, branch: &str) -> PathBuf {
         self.worktree_base().join(branch)
     }
+}
+
+/// Run `git <args>` with the working directory set to `git_dir`, expecting
+/// success.
+fn run_git(args: &[&str], git_dir: &Path) -> Result<()> {
+    let status = Command::new("git")
+        .args(args)
+        .current_dir(git_dir)
+        .status()
+        .with_context(|| format!("Failed to run git {}", args.join(" ")))?;
+    if !status.success() {
+        bail!("git {} failed", args.join(" "));
+    }
+    Ok(())
+}
+
+/// Run `git <args>` with the working directory set to `git_dir` and return
+/// trimmed stdout. Stdin is empty, which `git hash-object --stdin` reads as
+/// empty content.
+fn run_git_capture(args: &[&str], git_dir: &Path) -> Result<String> {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(git_dir)
+        .stdin(Stdio::null())
+        .output()
+        .with_context(|| format!("Failed to run git {}", args.join(" ")))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!("git {} failed: {stderr}", args.join(" "));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+/// Write the `.git` pointer file that makes `<container>` resolve to `.bare`.
+fn write_gitdir_file(container: &Path) -> Result<()> {
+    let git_file = container.join(".git");
+    std::fs::write(&git_file, "gitdir: ./.bare\n")
+        .with_context(|| format!("Failed to write {}", git_file.display()))?;
+    Ok(())
+}
+
+/// Initialize a bare repository at `bare` with a single empty commit on
+/// `default_branch`, and point `HEAD` at that branch.
+fn init_bare_at(bare: &Path, default_branch: &str) -> Result<()> {
+    std::fs::create_dir_all(bare)
+        .with_context(|| format!("Failed to create {}", bare.display()))?;
+    run_git(&["init", "--bare"], bare)?;
+
+    // Seed an empty commit via plumbing so the branch exists without needing
+    // a working tree. `commit-tree` is given an explicit identity so it does
+    // not depend on the caller's git config.
+    let empty_tree = run_git_capture(&["hash-object", "-w", "-t", "tree", "--stdin"], bare)?;
+    let commit = run_git_capture(
+        &[
+            "-c",
+            "user.name=grove",
+            "-c",
+            "user.email=grove@localhost",
+            "commit-tree",
+            empty_tree.as_str(),
+            "-m",
+            "Initial commit",
+        ],
+        bare,
+    )?;
+
+    let branch_ref = format!("refs/heads/{default_branch}");
+    run_git(&["update-ref", branch_ref.as_str(), commit.as_str()], bare)?;
+    run_git(&["symbolic-ref", "HEAD", branch_ref.as_str()], bare)?;
+    Ok(())
+}
+
+/// Create a new repository in the `.bare` container layout at `container`,
+/// with a single empty commit on `default_branch`.
+pub fn init_repo(container: &Path, default_branch: &str) -> Result<()> {
+    if container.exists() {
+        bail!("Destination already exists: {}", container.display());
+    }
+    std::fs::create_dir_all(container)
+        .with_context(|| format!("Failed to create {}", container.display()))?;
+    init_bare_at(&container.join(".bare"), default_branch)?;
+    write_gitdir_file(container)?;
+    Ok(())
 }
 
 /// The result of a successful clone operation.
@@ -264,6 +347,32 @@ mod tests {
     fn test_repo_name_no_git_suffix() {
         let name = repo_name_from_url("https://github.com/user/myrepo").unwrap();
         assert_eq!(name, "myrepo");
+    }
+
+    #[test]
+    fn init_repo_creates_container_with_initial_commit() {
+        let tmp = tempfile::tempdir().unwrap();
+        let container = tmp.path().join("myrepo");
+
+        init_repo(&container, "master").unwrap();
+
+        // Container layout on disk.
+        assert!(container.join(".bare").join("HEAD").is_file());
+        assert_eq!(
+            std::fs::read_to_string(container.join(".git")).unwrap(),
+            "gitdir: ./.bare\n"
+        );
+
+        // Exactly one commit on master.
+        let bare = container.join(".bare");
+        let log = run_git_capture(&["log", "--oneline", "master"], &bare).unwrap();
+        assert_eq!(log.lines().count(), 1);
+
+        // Detected as a container.
+        assert!(matches!(
+            RepoLayout::detect(&container).unwrap(),
+            RepoLayout::Container { .. }
+        ));
     }
 
     #[test]
