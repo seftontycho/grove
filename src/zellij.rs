@@ -20,12 +20,7 @@ impl ZellijBackend {
 
 impl Multiplexer for ZellijBackend {
     fn create_session(&self, name: &SessionName, worktree_path: &Path, shell: &str) -> Result<()> {
-        if std::env::var_os("ZELLIJ").is_some() {
-            bail!(
-                "You're inside a zellij session. Detach first (Ctrl-o d), \
-                 then run grove again."
-            );
-        }
+        ensure_not_inside_zellij()?;
 
         let zellij_name = name.as_zellij_name();
 
@@ -97,12 +92,7 @@ impl Multiplexer for ZellijBackend {
     }
 
     fn attach_session(&self, name: &str) -> Result<()> {
-        if std::env::var_os("ZELLIJ").is_some() {
-            bail!(
-                "You're inside a zellij session. Detach first (Ctrl-o d), \
-                 then run grove again."
-            );
-        }
+        ensure_not_inside_zellij()?;
 
         let status = Command::new("zellij")
             .args(["attach", name])
@@ -133,6 +123,19 @@ fn layout_path(name: &SessionName) -> PathBuf {
         "grove-{}.kdl",
         name.as_zellij_name().replace('/', "-")
     ))
+}
+
+/// Returns an error if grove is running inside an existing zellij session.
+/// grove cannot create or switch sessions from within one — the user must
+/// detach first.
+fn ensure_not_inside_zellij() -> Result<()> {
+    if std::env::var_os("ZELLIJ").is_some() {
+        bail!(
+            "You're inside a zellij session. Detach first (Ctrl-o d), \
+             then run grove again."
+        );
+    }
+    Ok(())
 }
 
 #[cfg(test)]
