@@ -9,6 +9,18 @@ use crate::git;
 const DEFAULT_BRANCH: &str = "master";
 
 pub fn new(db: &Db, config: &Config, name: &str, dir: Option<&str>) -> Result<()> {
+    if name.is_empty()
+        || name == "."
+        || name == ".."
+        || name.contains('/')
+        || name.contains('\\')
+    {
+        bail!(
+            "Invalid repository name '{name}': must not be empty, '.', '..', \
+             or contain path separators"
+        );
+    }
+
     if config.directories.is_empty() {
         bail!(
             "No directories configured. Add directories to your config file:\n  {}",
