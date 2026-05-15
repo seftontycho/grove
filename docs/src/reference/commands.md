@@ -19,7 +19,7 @@ Reuses an existing worktree and/or session if they already exist.
 
 ## `grove clone`
 
-Clone a remote repository as a bare repo into a configured directory.
+Clone a remote repository into a configured directory, using the .bare container layout.
 
 ```
 grove clone <url> [dir]
@@ -43,6 +43,34 @@ Print a table of all tracked repositories sorted by frecency.
 ```
 grove repo list
 ```
+
+### `grove repo new`
+
+Create a new, empty repository in the `.bare` container layout. The repo is
+seeded with a single empty commit on `master` so it is immediately usable.
+
+```
+grove repo new <name> [dir]
+```
+
+| Argument | Description |
+|----------|-------------|
+| `name` | Name of the repository (becomes the container directory name) |
+| `dir` | Named directory from config. Interactive if omitted. |
+
+### `grove repo migrate`
+
+Convert a legacy bare repository to the `.bare` container layout, in place.
+Refuses if any worktree has uncommitted changes; existing worktrees are
+discarded (branches are preserved — recreate worktrees with `grove open`).
+
+```
+grove repo migrate [name]
+```
+
+| Argument | Description |
+|----------|-------------|
+| `name` | Repo name. Interactive if omitted. |
 
 ### `grove repo add`
 

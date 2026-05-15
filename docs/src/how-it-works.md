@@ -22,14 +22,14 @@ When you run `grove open myrepo feat/auth`:
 3. **Multiplexer resolution** — grove checks which backend to use: the configured `multiplexer` value, or auto-detection via `$ZELLIJ` / `$TMUX` env vars and `$PATH`.
 4. **Session check** — grove asks the multiplexer for its current session list and looks for a session named `myrepo/feat/auth` (zellij) or `myrepo-feat/auth` (tmux). If found, it attaches immediately.
 5. **Worktree check** — grove runs `git worktree list` on the bare repo and checks whether a worktree for `refs/heads/feat/auth` already exists.
-6. **Worktree creation** — if no worktree exists, grove runs `git worktree add <bare-repo>/worktrees/feat/auth feat/auth`.
+6. **Worktree creation** — if no worktree exists, grove runs `git worktree add <repo>/feat/auth feat/auth`.
 7. **Session creation** — grove renders the layout template with minijinja, writes it to a temp file (zellij) or executes it as a shell script (tmux), then starts the new session.
 
-## Bare repositories
+## Container layout
 
-grove clones repositories as **bare** repos (no working tree at the root). The repo itself lives at e.g. `/Users/you/work/myrepo`, and worktrees are created under `/Users/you/work/myrepo/worktrees/<branch>`.
+grove stores each repository as a **container directory**. The git data lives in a hidden `.bare/` subdirectory (e.g. `/Users/you/work/myrepo/.bare`), and each worktree is a direct subdirectory of the container (e.g. `/Users/you/work/myrepo/main`, `/Users/you/work/myrepo/feat/auth`).
 
-This means you can have as many branches checked out simultaneously as you like, each in its own directory, without any conflicts.
+This means you can have as many branches checked out simultaneously as you like, each in its own directory, without any conflicts. Use `grove clone` to bring in an existing repo, `grove repo new` to create a fresh one, or `grove repo migrate` to upgrade a legacy bare repo.
 
 ## Session naming
 

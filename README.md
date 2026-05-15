@@ -37,14 +37,19 @@ eval "$(grove init zsh)"   # or bash / fish
 # 2. Configure your project directories
 grove config edit
 
-# 3. Clone a repo as a bare repository
+# 3. Bring in a repo — clone an existing one…
 grove clone git@github.com:your-org/your-repo.git work
+
+#    …or create a brand-new one
+grove repo new your-repo work
 
 # 4. Open a worktree + session (interactive)
 gv
 ```
 
-That's it. grove will ask you which repo and branch you want, create the worktree if needed, and drop you straight into a zellij session for it.
+Each repo is stored as a **container directory**: a hidden `.bare/` holding the
+git data, and one clean subdirectory per worktree. No bare-repo plumbing in
+your way.
 
 ## Installation
 
@@ -156,7 +161,7 @@ Branch selection includes all remote branches plus an option to create a new bra
 
 ### `grove clone <url> [dir]`
 
-Clones a repository as a bare repo into one of your configured directories.
+Clones a repository into one of your configured directories, using the `.bare` container layout.
 
 ```sh
 grove clone git@github.com:org/repo.git work
@@ -169,7 +174,9 @@ Manage tracked repositories.
 
 ```sh
 grove repo list          # list all repos (name, directory, frecency score, path)
-grove repo add <path>    # track an existing bare repo
+grove repo add <path>    # track an existing repo
+grove repo new <name>    # create a new repo in the container layout
+grove repo migrate       # upgrade a legacy bare repo to the container layout
 grove repo rm <name>     # stop tracking a repo
 ```
 
@@ -210,7 +217,7 @@ grove init zsh   # zsh | bash | fish
 
 grove stores repo metadata in a SQLite database (`~/.local/share/grove/grove.db`). When you open a repo+branch:
 
-1. grove checks whether a worktree exists at `<bare-repo>/worktrees/<branch>`, creating it if not.
+1. grove checks whether a worktree exists at `<repo>/<branch>`, creating it if not.
 2. grove resolves which multiplexer to use (zellij or tmux).
 3. grove checks whether a session named `<repo>/<branch>` (zellij) or `<repo>-<branch>` (tmux) already exists.
 4. If the session exists, grove attaches to it. Otherwise, it creates a new session using the layout template.

@@ -1,0 +1,1174 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>grove</title>
+        <meta name="robots" content="noindex">
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="Instant worktrees. Instant sessions. Zero friction.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-2459343d.css">
+        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-69fb4cfc.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-98a31a5b.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">grove</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/seftontycho/grove" title="Git repository" aria-label="Git repository">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
+<p>grove is a CLI tool that pairs <strong>git worktrees</strong> with <strong>terminal multiplexer sessions</strong> (<a href="https://zellij.dev">zellij</a> or <a href="https://github.com/tmux/tmux">tmux</a>) to make context-switching between projects and branches instant and frictionless.</p>
+<h2 id="the-problem"><a class="header" href="#the-problem">The problem</a></h2>
+<p>Switching between tasks is expensive. The typical workflow looks like this:</p>
+<ol>
+<li>Stash or commit your current changes</li>
+<li>Check out a different branch</li>
+<li>Kill your editor (it’s now pointing at the wrong files)</li>
+<li>Relaunch your editor</li>
+<li>Remember what you were doing</li>
+</ol>
+<p>Do this a dozen times a day and you’ve lost an hour to overhead.</p>
+<h2 id="the-grove-approach"><a class="header" href="#the-grove-approach">The grove approach</a></h2>
+<p>grove gives every repo+branch combination its own <strong>isolated workspace</strong>:</p>
+<ul>
+<li>A <strong>git worktree</strong> — a separate working directory checked out to that branch, so you never need to stash anything</li>
+<li>A <strong>multiplexer session</strong> — a persistent terminal session with your full layout ready to go</li>
+</ul>
+<p>Switching contexts becomes a single command: <code>gv</code>. grove drops you straight into the right session, creating the worktree and session if they don’t exist yet.</p>
+<p>grove works with both <strong>zellij</strong> and <strong>tmux</strong>, auto-detecting which one you’re using.</p>
+<p>By default, both zellij and tmux sessions open with three named tabs/windows:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Tab/Window</th><th>Contents</th></tr>
+</thead>
+<tbody>
+<tr><td><code>shell</code></td><td>Your shell, focused by default</td></tr>
+<tr><td><code>editor</code></td><td><code>nvim .</code></td></tr>
+<tr><td><code>opencode</code></td><td><code>opencode</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>These are just defaults — the layout is fully customisable. Place your own template at <code>~/.config/grove/templates/zellij.kdl</code> (zellij) or <code>~/.config/grove/templates/tmux.sh</code> (tmux) and grove will use it instead.</p>
+<h2 id="who-is-grove-for"><a class="header" href="#who-is-grove-for">Who is grove for?</a></h2>
+<p>grove is for developers who:</p>
+<ul>
+<li>Work across multiple repositories or many branches simultaneously</li>
+<li>Use <a href="https://zellij.dev">zellij</a> or <a href="https://github.com/tmux/tmux">tmux</a> as their terminal multiplexer</li>
+<li>Use <a href="https://neovim.io">neovim</a> as their editor</li>
+<li>Want their environment to be ready instantly when they switch tasks</li>
+</ul>
+<h2 id="quick-start"><a class="header" href="#quick-start">Quick start</a></h2>
+<pre><code class="language-sh"># Install
+cargo install --git https://github.com/seftontycho/grove
+
+# Set up the shell alias
+eval "$(grove init zsh)"
+
+# Configure your project directories
+grove config edit
+
+# Clone a repo
+grove clone git@github.com:your-org/your-repo.git work
+
+# Open a worktree + session
+gv
+</code></pre>
+<p>See <a href="#installation">Installation</a> for full setup instructions.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="installation"><a class="header" href="#installation">Installation</a></h1>
+<h2 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h2>
+<p>grove requires the following tools to be installed and available on your <code>$PATH</code>:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Tool</th><th>Version</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><a href="https://rustup.rs">Rust</a></td><td>stable</td><td>Building grove</td></tr>
+<tr><td><a href="https://git-scm.com">git</a></td><td>any recent</td><td>Worktree management</td></tr>
+<tr><td><a href="https://zellij.dev">zellij</a></td><td>any recent</td><td>Terminal sessions</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="install-grove"><a class="header" href="#install-grove">Install grove</a></h2>
+<h3 id="from-github-recommended"><a class="header" href="#from-github-recommended">From GitHub (recommended)</a></h3>
+<pre><code class="language-sh">cargo install --git https://github.com/seftontycho/grove
+</code></pre>
+<p>This compiles and installs the latest version from the <code>main</code> branch directly.</p>
+<p>To pin to a specific release tag:</p>
+<pre><code class="language-sh">cargo install --git https://github.com/seftontycho/grove --tag v0.1.0
+</code></pre>
+<h3 id="from-source"><a class="header" href="#from-source">From source</a></h3>
+<p>If you want to build from a local clone (useful for development):</p>
+<pre><code class="language-sh">git clone https://github.com/seftontycho/grove
+cd grove
+cargo install --path .
+</code></pre>
+<h2 id="verify-the-installation"><a class="header" href="#verify-the-installation">Verify the installation</a></h2>
+<pre><code class="language-sh">grove --version
+</code></pre>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next steps</a></h2>
+<p>Once grove is installed, set up your shell integration:</p>
+<pre><code class="language-sh"># Zsh
+eval "$(grove init zsh)"
+
+# Bash
+eval "$(grove init bash)"
+
+# Fish
+grove init fish | source
+</code></pre>
+<p>Then continue to <a href="#shell-integration">Shell Integration</a> and <a href="#configuration">Configuration</a>.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="shell-integration"><a class="header" href="#shell-integration">Shell Integration</a></h1>
+<p>grove provides a <code>gv</code> shell function that wraps <code>grove open</code> for fast day-to-day use. Setting it up takes one line.</p>
+<h2 id="setup"><a class="header" href="#setup">Setup</a></h2>
+<p>Add the appropriate line to your shell config file:</p>
+<p><strong>Zsh</strong> — add to the end of <code>~/.zshrc</code>:</p>
+<pre><code class="language-sh">eval "$(grove init zsh)"
+</code></pre>
+<p><strong>Bash</strong> — add to the end of <code>~/.bashrc</code>:</p>
+<pre><code class="language-sh">eval "$(grove init bash)"
+</code></pre>
+<p><strong>Fish</strong> — add to the end of <code>~/.config/fish/config.fish</code>:</p>
+<pre><code class="language-sh">grove init fish | source
+</code></pre>
+<p>Reload your shell or open a new terminal for the changes to take effect.</p>
+<h2 id="the-gv-function"><a class="header" href="#the-gv-function">The <code>gv</code> function</a></h2>
+<p><code>gv</code> is your primary interface to grove:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Command</th><th>Action</th></tr>
+</thead>
+<tbody>
+<tr><td><code>gv</code></td><td>Open a repo+branch interactively (fuzzy select both)</td></tr>
+<tr><td><code>gv &lt;query&gt;</code></td><td>Fuzzy-select a repo matching <code>query</code>, then select a branch</td></tr>
+<tr><td><code>gv &lt;query&gt; &lt;branch&gt;</code></td><td>Go directly to the specified repo and branch</td></tr>
+<tr><td><code>gv -l</code></td><td>List all active grove sessions</td></tr>
+<tr><td><code>gv -c</code></td><td>Close the current worktree and session</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="examples"><a class="header" href="#examples">Examples</a></h3>
+<pre><code class="language-sh">gv                    # pick repo, then pick branch
+gv grove              # pick a branch in the grove repo
+gv grove main         # open grove/main directly
+gv -l                 # see all active sessions
+gv -c                 # close current session
+</code></pre>
+<h2 id="shell-completions"><a class="header" href="#shell-completions">Shell completions</a></h2>
+<p>grove can generate completions for the <code>grove</code> binary itself (not the <code>gv</code> function):</p>
+<pre><code class="language-sh"># Zsh — add to your fpath
+grove completions zsh &gt; ~/.zfunc/_grove
+# ensure ~/.zfunc is in your fpath and compinit has been called
+
+# Bash
+grove completions bash &gt; /etc/bash_completion.d/grove
+# or for a user install:
+grove completions bash &gt; ~/.local/share/bash-completion/completions/grove
+
+# Fish
+grove completions fish &gt; ~/.config/fish/completions/grove.fish
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="configuration"><a class="header" href="#configuration">Configuration</a></h1>
+<p>grove is configured via a TOML file. Run <code>grove config show</code> to see its location, or <code>grove config edit</code> to open it in your <code>$EDITOR</code>.</p>
+<h2 id="example-config"><a class="header" href="#example-config">Example config</a></h2>
+<pre><code class="language-toml">shell = "zsh"
+multiplexer = "auto"
+
+[directories]
+work = { path = "/Users/you/work" }
+oss  = { path = "/Users/you/oss"  }
+</code></pre>
+<h2 id="fields"><a class="header" href="#fields">Fields</a></h2>
+<h3 id="shell"><a class="header" href="#shell"><code>shell</code></a></h3>
+<p>The shell to use inside new sessions.</p>
+<ul>
+<li><strong>Type:</strong> string — <code>zsh</code> | <code>bash</code> | <code>fish</code></li>
+<li><strong>Default:</strong> auto-detected from the <code>$SHELL</code> environment variable (falls back to <code>zsh</code>)</li>
+</ul>
+<pre><code class="language-toml">shell = "zsh"
+</code></pre>
+<h3 id="multiplexer"><a class="header" href="#multiplexer"><code>multiplexer</code></a></h3>
+<p>Which terminal multiplexer backend grove should use.</p>
+<ul>
+<li><strong>Type:</strong> string — <code>auto</code> | <code>zellij</code> | <code>tmux</code></li>
+<li><strong>Default:</strong> <code>auto</code></li>
+</ul>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Value</th><th>Behaviour</th></tr>
+</thead>
+<tbody>
+<tr><td><code>auto</code></td><td>Prefer the currently-running multiplexer (<code>$ZELLIJ</code> / <code>$TMUX</code> env vars), then fall back to whichever binary is found on <code>$PATH</code> first (zellij wins on a tie)</td></tr>
+<tr><td><code>zellij</code></td><td>Always use zellij</td></tr>
+<tr><td><code>tmux</code></td><td>Always use tmux</td></tr>
+</tbody>
+</table>
+</div>
+<pre><code class="language-toml">multiplexer = "tmux"
+</code></pre>
+<h3 id="directories"><a class="header" href="#directories"><code>[directories]</code></a></h3>
+<p>A map of named directory entries. Each key is a short label; each value has a <code>path</code> field pointing to a directory on disk where grove will clone and look for bare repositories.</p>
+<pre><code class="language-toml">[directories]
+work = { path = "/Users/you/work" }
+oss  = { path = "/Users/you/oss"  }
+</code></pre>
+<p>You can have as many entries as you like. Paths that do not exist or are not directories will produce a warning on startup but will not prevent grove from running.</p>
+<h2 id="custom-layout-templates"><a class="header" href="#custom-layout-templates">Custom layout templates</a></h2>
+<p>grove also looks for layout template overrides in the config directory:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>File</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>~/.config/grove/templates/zellij.kdl</code></td><td>Custom zellij layout</td></tr>
+<tr><td><code>~/.config/grove/templates/tmux.sh</code></td><td>Custom tmux layout script</td></tr>
+</tbody>
+</table>
+</div>
+<p>See <a href="#session-layout">Session Layout</a> for full details.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="opening-a-workspace"><a class="header" href="#opening-a-workspace">Opening a Workspace</a></h1>
+<p><code>grove open</code> (or the <code>gv</code> shell alias) is the command you will use most. It opens a git worktree and a multiplexer session for a given repo and branch, creating them if they don’t already exist.</p>
+<h2 id="usage"><a class="header" href="#usage">Usage</a></h2>
+<pre><code class="language-sh">grove open [query] [branch]
+gv [query] [branch]
+</code></pre>
+<p>Both arguments are optional. If omitted, grove presents an interactive fuzzy-select prompt.</p>
+<h2 id="how-selection-works"><a class="header" href="#how-selection-works">How selection works</a></h2>
+<h3 id="repo-selection"><a class="header" href="#repo-selection">Repo selection</a></h3>
+<p>If <code>query</code> is provided, grove first tries an exact name match, then falls back to a fuzzy substring match ordered by frecency. If <code>query</code> is omitted, an interactive fuzzy list of all tracked repos is shown, also ordered by frecency.</p>
+<h3 id="branch-selection"><a class="header" href="#branch-selection">Branch selection</a></h3>
+<p>If <code>branch</code> is provided it is used directly. If omitted, grove lists all remote branches for the selected repo and presents them interactively. The list always includes a <strong>[create new branch]</strong> option at the top — selecting it prompts you to type a new branch name.</p>
+<p>Remote branch names have the remote prefix stripped before use (e.g. <code>origin/feat/auth</code> becomes <code>feat/auth</code>).</p>
+<h2 id="session-and-worktree-reuse"><a class="header" href="#session-and-worktree-reuse">Session and worktree reuse</a></h2>
+<p>grove never creates duplicates:</p>
+<ul>
+<li>If a session named <code>&lt;repo&gt;/&lt;branch&gt;</code> (zellij) or <code>&lt;repo&gt;-&lt;branch&gt;</code> (tmux) already exists, grove attaches to it immediately without creating a new worktree.</li>
+<li>If a worktree already exists for the branch, grove reuses it and only creates a new session.</li>
+</ul>
+<h2 id="examples-1"><a class="header" href="#examples-1">Examples</a></h2>
+<pre><code class="language-sh"># Fully interactive — pick repo, then pick branch
+gv
+
+# Select branch interactively for a specific repo
+gv myrepo
+
+# Go directly to a specific repo and branch
+gv myrepo main
+gv myrepo feat/new-feature
+
+# Using grove directly instead of the gv alias
+grove open myrepo main
+</code></pre>
+<h2 id="what-gets-opened"><a class="header" href="#what-gets-opened">What gets opened</a></h2>
+<p>A new session is created with the default layout (three tabs/windows: <code>shell</code>, <code>editor</code>, <code>opencode</code>), all with the working directory set to the worktree path. The layout is customisable — see <a href="#session-layout">Session Layout</a>.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="cloning-repositories"><a class="header" href="#cloning-repositories">Cloning Repositories</a></h1>
+<p><code>grove clone</code> clones a remote repository into one of your configured directories using the <code>.bare</code> container layout, and automatically registers it in grove’s tracking database.</p>
+<h2 id="usage-1"><a class="header" href="#usage-1">Usage</a></h2>
+<pre><code class="language-sh">grove clone &lt;url&gt; [dir]
+</code></pre>
+<ul>
+<li><code>url</code> — any Git remote URL (SSH or HTTPS)</li>
+<li><code>dir</code> — the name of a configured directory (from <code>[directories]</code> in your config). If omitted and you have more than one directory configured, grove will present an interactive selection prompt. If you only have one directory configured it is used automatically.</li>
+</ul>
+<h2 id="examples-2"><a class="header" href="#examples-2">Examples</a></h2>
+<pre><code class="language-sh"># Clone into the 'work' directory (from config)
+grove clone git@github.com:your-org/your-repo.git work
+
+# Clone using HTTPS
+grove clone https://github.com/your-org/your-repo.git work
+
+# Omit the directory for interactive selection
+grove clone git@github.com:your-org/your-repo.git
+</code></pre>
+<h2 id="what-happens"><a class="header" href="#what-happens">What happens</a></h2>
+<ol>
+<li>The repository name is inferred from the URL (e.g. <code>your-repo</code> from <code>your-org/your-repo.git</code>).</li>
+<li>The repo is cloned as a container directory at <code>&lt;directory-path&gt;/&lt;repo-name&gt;</code> (e.g. <code>/Users/you/work/your-repo</code>), with git data in <code>.bare/</code> and worktrees as direct subdirectories.</li>
+<li>The repo is added to grove’s database so it appears in <code>grove open</code> and <code>grove repo list</code>.</li>
+</ol>
+<h2 id="prerequisites-1"><a class="header" href="#prerequisites-1">Prerequisites</a></h2>
+<p>You must have at least one directory configured before cloning. If none are configured, grove will print the path to your config file and exit with an error.</p>
+<pre><code class="language-toml"># ~/.config/grove/config.toml
+[directories]
+work = { path = "/Users/you/work" }
+oss  = { path = "/Users/you/oss"  }
+</code></pre>
+<h2 id="tracking-an-existing-repo"><a class="header" href="#tracking-an-existing-repo">Tracking an existing repo</a></h2>
+<p>If you already have a bare repository on disk that you want grove to track, use <a href="#managing-repositories"><code>grove repo add</code></a> instead.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="managing-repositories"><a class="header" href="#managing-repositories">Managing Repositories</a></h1>
+<p>grove keeps a database of tracked repositories. The <code>grove repo</code> subcommands let you add, remove, and list them.</p>
+<h2 id="create-a-new-repo"><a class="header" href="#create-a-new-repo">Create a new repo</a></h2>
+<pre><code class="language-sh">grove repo new &lt;name&gt; [dir]
+</code></pre>
+<p>Creates a new, empty repository in the <code>.bare</code> container layout inside one of your configured directories. The repo is seeded with a single empty commit on <code>master</code> and immediately tracked in grove’s database.</p>
+<pre><code class="language-sh">grove repo new my-project work
+</code></pre>
+<h2 id="migrate-a-legacy-bare-repo"><a class="header" href="#migrate-a-legacy-bare-repo">Migrate a legacy bare repo</a></h2>
+<pre><code class="language-sh">grove repo migrate [name]
+</code></pre>
+<p>Converts a legacy bare repository to the <code>.bare</code> container layout in place. Refuses if any worktree has uncommitted changes. Existing worktrees are discarded (branches are preserved — recreate worktrees with <code>grove open</code>).</p>
+<h2 id="list-tracked-repos"><a class="header" href="#list-tracked-repos">List tracked repos</a></h2>
+<pre><code class="language-sh">grove repo list
+</code></pre>
+<p>Prints a table of all tracked repositories:</p>
+<pre><code>| Name     | Dir  | Score | Path                      |
+|----------|------|-------|---------------------------|
+| myrepo   | work |   42  | /Users/you/work/myrepo    |
+| otherlib | oss  |    7  | /Users/you/oss/otherlib   |
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Column</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td>Name</td><td>Repository name</td></tr>
+<tr><td>Dir</td><td>The named directory from config this repo belongs to (or <code>-</code> if added manually)</td></tr>
+<tr><td>Score</td><td>Current <a href="#frecency">frecency</a> score — higher means used more recently and frequently</td></tr>
+<tr><td>Path</td><td>Absolute path to the container directory on disk</td></tr>
+</tbody>
+</table>
+</div>
+<p>Repos are sorted by frecency score descending, so your most active projects appear first.</p>
+<h2 id="track-an-existing-repo"><a class="header" href="#track-an-existing-repo">Track an existing repo</a></h2>
+<pre><code class="language-sh">grove repo add &lt;path&gt;
+</code></pre>
+<p>Registers an existing git repository on disk with grove. The repo name is taken from the directory name. Works with both the <code>.bare</code> container layout and plain repositories.</p>
+<pre><code class="language-sh">grove repo add /Users/you/work/myrepo
+</code></pre>
+<p>grove verifies that the path is a valid git repository before adding it. This is useful for repos that were not cloned via <code>grove clone</code>.</p>
+<h2 id="stop-tracking-a-repo"><a class="header" href="#stop-tracking-a-repo">Stop tracking a repo</a></h2>
+<pre><code class="language-sh">grove repo rm &lt;name&gt;
+</code></pre>
+<p>Removes a repository from grove’s tracking database. This does <strong>not</strong> delete anything from disk — the repository and all its worktrees are left untouched.</p>
+<pre><code class="language-sh">grove repo rm myrepo
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="managing-worktrees"><a class="header" href="#managing-worktrees">Managing Worktrees</a></h1>
+<p>The <code>grove tree</code> subcommands let you inspect and clean up git worktrees for your tracked repositories.</p>
+<h2 id="list-worktrees"><a class="header" href="#list-worktrees">List worktrees</a></h2>
+<pre><code class="language-sh">grove tree list [repo]
+</code></pre>
+<p>Lists all worktrees for a repository, including the bare root. If <code>repo</code> is omitted, grove presents an interactive repo selection prompt.</p>
+<p>Example output:</p>
+<pre><code>  refs/heads/main [bare]  a1b2c3d4  /Users/you/work/myrepo/.bare
+  refs/heads/feat/auth    e5f6a7b8  /Users/you/work/myrepo/feat/auth
+  refs/heads/hotfix-123   c9d0e1f2  /Users/you/work/myrepo/hotfix-123
+</code></pre>
+<h2 id="close-a-worktree"><a class="header" href="#close-a-worktree">Close a worktree</a></h2>
+<pre><code class="language-sh">grove tree close [query]
+</code></pre>
+<p>Interactively select a worktree to close. grove will:</p>
+<ol>
+<li>Kill the associated multiplexer session (both the zellij and tmux name formats are tried, so this works regardless of which backend created the session).</li>
+<li>Remove the worktree directory via <code>git worktree remove</code>.</li>
+<li>If the worktree directory is already missing, run <code>git worktree prune</code> to clean up the stale entry instead.</li>
+</ol>
+<p>If <code>query</code> is omitted, an interactive fuzzy list shows all non-bare worktrees for the selected repo.</p>
+<h3 id="orphaned-sessions"><a class="header" href="#orphaned-sessions">Orphaned sessions</a></h3>
+<p><code>grove tree close</code> also detects <strong>orphaned sessions</strong> — multiplexer sessions that exist for a repo but whose worktree directory has already been deleted. These appear in the selection list labelled <code>[orphaned session]</code> and can be killed directly.</p>
+<h2 id="prune-stale-entries"><a class="header" href="#prune-stale-entries">Prune stale entries</a></h2>
+<pre><code class="language-sh">grove tree prune [repo]
+</code></pre>
+<p>Runs <code>git worktree prune</code> on the selected repository, removing any stale worktree metadata entries for directories that no longer exist on disk. If <code>repo</code> is omitted, grove presents an interactive selection prompt.</p>
+<p>This is safe to run at any time and is a lighter alternative to <code>grove tree close</code> when you just want to clean up metadata without interactively choosing a specific worktree.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="managing-sessions"><a class="header" href="#managing-sessions">Managing Sessions</a></h1>
+<p>The <code>grove session</code> subcommands give you direct access to the multiplexer sessions grove has created, without going through the repo/branch selection flow.</p>
+<h2 id="list-sessions"><a class="header" href="#list-sessions">List sessions</a></h2>
+<pre><code class="language-sh">grove session list
+</code></pre>
+<p>Lists all active grove sessions as reported by the current multiplexer backend. Each session is shown by its full name.</p>
+<p>Example output:</p>
+<pre><code>  myrepo/main
+  myrepo/feat/auth
+  otherlib/main
+</code></pre>
+<p>This is also accessible via the <code>gv -l</code> shell alias.</p>
+<h2 id="attach-to-a-session"><a class="header" href="#attach-to-a-session">Attach to a session</a></h2>
+<pre><code class="language-sh">grove session attach &lt;name&gt;
+</code></pre>
+<p>Attaches directly to a named session. The name must match exactly as shown in <code>grove session list</code>.</p>
+<pre><code class="language-sh">grove session attach myrepo/main      # zellij session
+grove session attach myrepo-main      # tmux session
+</code></pre>
+<p>For tmux, if you are already inside a tmux session, grove uses <code>switch-client</code> instead of <code>attach-session</code> to avoid nesting.</p>
+<h2 id="tip-use-grove-open-for-day-to-day-switching"><a class="header" href="#tip-use-grove-open-for-day-to-day-switching">Tip: use <code>grove open</code> for day-to-day switching</a></h2>
+<p><code>grove session attach</code> is useful when you already know the exact session name. For interactive switching with fuzzy search, use <a href="#opening-a-workspace"><code>grove open</code></a> (or <code>gv</code>) instead — it handles both session reuse and worktree creation in one step.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="command-reference"><a class="header" href="#command-reference">Command Reference</a></h1>
+<h2 id="grove-open"><a class="header" href="#grove-open"><code>grove open</code></a></h2>
+<p>Open a worktree and multiplexer session.</p>
+<pre><code>grove open [query] [branch]
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Argument</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>query</code></td><td>Repo name or fuzzy substring. Interactive if omitted.</td></tr>
+<tr><td><code>branch</code></td><td>Branch name. Interactive if omitted. Includes a “[create new branch]” option.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Reuses an existing worktree and/or session if they already exist.</p>
+<hr>
+<h2 id="grove-clone"><a class="header" href="#grove-clone"><code>grove clone</code></a></h2>
+<p>Clone a remote repository into a configured directory, using the .bare container layout.</p>
+<pre><code>grove clone &lt;url&gt; [dir]
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Argument</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>url</code></td><td>Git remote URL (SSH or HTTPS)</td></tr>
+<tr><td><code>dir</code></td><td>Named directory from config. Interactive if omitted (skipped if only one directory is configured).</td></tr>
+</tbody>
+</table>
+</div>
+<p>Automatically tracks the cloned repo in the database.</p>
+<hr>
+<h2 id="grove-repo"><a class="header" href="#grove-repo"><code>grove repo</code></a></h2>
+<h3 id="grove-repo-list"><a class="header" href="#grove-repo-list"><code>grove repo list</code></a></h3>
+<p>Print a table of all tracked repositories sorted by frecency.</p>
+<pre><code>grove repo list
+</code></pre>
+<h3 id="grove-repo-new"><a class="header" href="#grove-repo-new"><code>grove repo new</code></a></h3>
+<p>Create a new, empty repository in the <code>.bare</code> container layout. The repo is
+seeded with a single empty commit on <code>master</code> so it is immediately usable.</p>
+<pre><code>grove repo new &lt;name&gt; [dir]
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Argument</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>name</code></td><td>Name of the repository (becomes the container directory name)</td></tr>
+<tr><td><code>dir</code></td><td>Named directory from config. Interactive if omitted.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="grove-repo-migrate"><a class="header" href="#grove-repo-migrate"><code>grove repo migrate</code></a></h3>
+<p>Convert a legacy bare repository to the <code>.bare</code> container layout, in place.
+Refuses if any worktree has uncommitted changes; existing worktrees are
+discarded (branches are preserved — recreate worktrees with <code>grove open</code>).</p>
+<pre><code>grove repo migrate [name]
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Argument</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>name</code></td><td>Repo name. Interactive if omitted.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="grove-repo-add"><a class="header" href="#grove-repo-add"><code>grove repo add</code></a></h3>
+<p>Track an existing local repository.</p>
+<pre><code>grove repo add &lt;path&gt;
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Argument</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>path</code></td><td>Absolute or relative path to a git repository on disk</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="grove-repo-rm"><a class="header" href="#grove-repo-rm"><code>grove repo rm</code></a></h3>
+<p>Stop tracking a repository. Does not touch the files on disk.</p>
+<pre><code>grove repo rm &lt;name&gt;
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Argument</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>name</code></td><td>Exact repository name as shown in <code>grove repo list</code></td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="grove-tree"><a class="header" href="#grove-tree"><code>grove tree</code></a></h2>
+<h3 id="grove-tree-list"><a class="header" href="#grove-tree-list"><code>grove tree list</code></a></h3>
+<p>List all worktrees for a repository.</p>
+<pre><code>grove tree list [repo]
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Argument</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>repo</code></td><td>Repo name or fuzzy substring. Interactive if omitted.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="grove-tree-close"><a class="header" href="#grove-tree-close"><code>grove tree close</code></a></h3>
+<p>Close a worktree and kill its multiplexer session.</p>
+<pre><code>grove tree close [query]
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Argument</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>query</code></td><td>Repo name or fuzzy substring. Interactive if omitted.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Also surfaces orphaned sessions (session exists but worktree directory is gone).</p>
+<h3 id="grove-tree-prune"><a class="header" href="#grove-tree-prune"><code>grove tree prune</code></a></h3>
+<p>Prune stale worktree entries via <code>git worktree prune</code>.</p>
+<pre><code>grove tree prune [repo]
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Argument</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>repo</code></td><td>Repo name or fuzzy substring. Interactive if omitted.</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="grove-session"><a class="header" href="#grove-session"><code>grove session</code></a></h2>
+<h3 id="grove-session-list"><a class="header" href="#grove-session-list"><code>grove session list</code></a></h3>
+<p>List all active multiplexer sessions.</p>
+<pre><code>grove session list
+</code></pre>
+<h3 id="grove-session-attach"><a class="header" href="#grove-session-attach"><code>grove session attach</code></a></h3>
+<p>Attach to a named session.</p>
+<pre><code>grove session attach &lt;name&gt;
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Argument</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>name</code></td><td>Exact session name as shown in <code>grove session list</code></td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="grove-config"><a class="header" href="#grove-config"><code>grove config</code></a></h2>
+<h3 id="grove-config-show"><a class="header" href="#grove-config-show"><code>grove config show</code></a></h3>
+<p>Print the path to the config file and its current contents.</p>
+<pre><code>grove config show
+</code></pre>
+<h3 id="grove-config-edit"><a class="header" href="#grove-config-edit"><code>grove config edit</code></a></h3>
+<p>Open the config file in <code>$EDITOR</code> (defaults to <code>vim</code>). Validates the file after saving and prints any warnings.</p>
+<pre><code>grove config edit
+</code></pre>
+<hr>
+<h2 id="grove-init"><a class="header" href="#grove-init"><code>grove init</code></a></h2>
+<p>Print the <code>gv</code> shell function to stdout. Intended to be evaluated by your shell.</p>
+<pre><code>grove init &lt;shell&gt;
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Argument</th><th>Values</th></tr>
+</thead>
+<tbody>
+<tr><td><code>shell</code></td><td><code>zsh</code> | <code>bash</code> | <code>fish</code></td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Setup:</strong></p>
+<pre><code class="language-sh"># Zsh / Bash
+eval "$(grove init zsh)"
+
+# Fish
+grove init fish | source
+</code></pre>
+<hr>
+<h2 id="grove-completions"><a class="header" href="#grove-completions"><code>grove completions</code></a></h2>
+<p>Generate shell completions for the <code>grove</code> binary.</p>
+<pre><code>grove completions &lt;shell&gt;
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Argument</th><th>Values</th></tr>
+</thead>
+<tbody>
+<tr><td><code>shell</code></td><td><code>bash</code> | <code>elvish</code> | <code>fish</code> | <code>powershell</code> | <code>zsh</code></td></tr>
+</tbody>
+</table>
+</div>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="configuration-reference"><a class="header" href="#configuration-reference">Configuration Reference</a></h1>
+<h2 id="file-location"><a class="header" href="#file-location">File location</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Platform</th><th>Path</th></tr>
+</thead>
+<tbody>
+<tr><td>Linux</td><td><code>~/.config/grove/config.toml</code></td></tr>
+<tr><td>macOS</td><td><code>~/Library/Application Support/grove/config.toml</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>Run <code>grove config show</code> to print the exact path on your system.</p>
+<h2 id="full-example"><a class="header" href="#full-example">Full example</a></h2>
+<pre><code class="language-toml">shell = "zsh"
+multiplexer = "auto"
+
+[directories]
+work = { path = "/Users/you/work" }
+oss  = { path = "/Users/you/oss"  }
+</code></pre>
+<h2 id="fields-1"><a class="header" href="#fields-1">Fields</a></h2>
+<h3 id="shell-1"><a class="header" href="#shell-1"><code>shell</code></a></h3>
+<p>Shell binary to launch inside new sessions.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th></th><th></th></tr>
+</thead>
+<tbody>
+<tr><td><strong>Type</strong></td><td>string</td></tr>
+<tr><td><strong>Values</strong></td><td><code>zsh</code> | <code>bash</code> | <code>fish</code></td></tr>
+<tr><td><strong>Default</strong></td><td>Auto-detected from <code>$SHELL</code>; falls back to <code>zsh</code></td></tr>
+</tbody>
+</table>
+</div>
+<pre><code class="language-toml">shell = "fish"
+</code></pre>
+<hr>
+<h3 id="multiplexer-1"><a class="header" href="#multiplexer-1"><code>multiplexer</code></a></h3>
+<p>Terminal multiplexer backend to use.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th></th><th></th></tr>
+</thead>
+<tbody>
+<tr><td><strong>Type</strong></td><td>string</td></tr>
+<tr><td><strong>Values</strong></td><td><code>auto</code> | <code>zellij</code> | <code>tmux</code></td></tr>
+<tr><td><strong>Default</strong></td><td><code>auto</code></td></tr>
+</tbody>
+</table>
+</div>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Value</th><th>Behaviour</th></tr>
+</thead>
+<tbody>
+<tr><td><code>auto</code></td><td>Use <code>$ZELLIJ</code> or <code>$TMUX</code> env vars to detect the running multiplexer; if neither is set, check <code>$PATH</code> for <code>zellij</code> then <code>tmux</code></td></tr>
+<tr><td><code>zellij</code></td><td>Always use zellij</td></tr>
+<tr><td><code>tmux</code></td><td>Always use tmux</td></tr>
+</tbody>
+</table>
+</div>
+<pre><code class="language-toml">multiplexer = "tmux"
+</code></pre>
+<hr>
+<h3 id="directories-1"><a class="header" href="#directories-1"><code>[directories]</code></a></h3>
+<p>Named directory entries used for cloning and locating repositories.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th></th><th></th></tr>
+</thead>
+<tbody>
+<tr><td><strong>Type</strong></td><td>TOML table</td></tr>
+<tr><td><strong>Default</strong></td><td>Empty</td></tr>
+</tbody>
+</table>
+</div>
+<p>Each key is a short label (used in <code>grove clone</code> and displayed in <code>grove repo list</code>). Each value must have a <code>path</code> field.</p>
+<pre><code class="language-toml">[directories]
+work    = { path = "/Users/you/work" }
+oss     = { path = "/Users/you/oss" }
+clients = { path = "/Users/you/clients" }
+</code></pre>
+<p>Paths that do not exist or are not directories produce a warning on startup but do not prevent grove from running.</p>
+<h2 id="layout-templates"><a class="header" href="#layout-templates">Layout templates</a></h2>
+<p>Layout template files are not part of <code>config.toml</code> but live alongside it:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>File</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>&lt;config_dir&gt;/grove/templates/zellij.kdl</code></td><td>Custom zellij layout</td></tr>
+<tr><td><code>&lt;config_dir&gt;/grove/templates/tmux.sh</code></td><td>Custom tmux setup script</td></tr>
+</tbody>
+</table>
+</div>
+<p>If these files exist grove uses them instead of the built-in defaults. See <a href="#session-layout">Session Layout</a> for the full template variable reference.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="session-layout"><a class="header" href="#session-layout">Session Layout</a></h1>
+<p>grove opens a pre-configured session in your multiplexer whenever you create a new workspace. The layout is driven by a template that you can fully customise.</p>
+<h2 id="default-layouts"><a class="header" href="#default-layouts">Default layouts</a></h2>
+<h3 id="zellij"><a class="header" href="#zellij">Zellij</a></h3>
+<p>Three tabs, CWD set to the worktree path:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Tab</th><th>Command</th><th>Focused</th></tr>
+</thead>
+<tbody>
+<tr><td><code>shell</code></td><td>your shell</td><td>yes</td></tr>
+<tr><td><code>editor</code></td><td><code>nvim .</code></td><td>no</td></tr>
+<tr><td><code>opencode</code></td><td><code>opencode</code></td><td>no</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="tmux"><a class="header" href="#tmux">tmux</a></h3>
+<p>Three windows, all opened with <code>cd &lt;worktree_path&gt;</code> first:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Window</th><th>Command</th><th>Focused</th></tr>
+</thead>
+<tbody>
+<tr><td><code>shell</code></td><td>your shell</td><td>yes</td></tr>
+<tr><td><code>editor</code></td><td><code>nvim .</code></td><td>no</td></tr>
+<tr><td><code>opencode</code></td><td><code>opencode</code></td><td>no</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="customising-the-layout"><a class="header" href="#customising-the-layout">Customising the layout</a></h2>
+<p>Place a custom template file in your grove config directory and grove will use it instead of the built-in default:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Multiplexer</th><th>Template path</th></tr>
+</thead>
+<tbody>
+<tr><td>zellij</td><td><code>~/.config/grove/templates/zellij.kdl</code></td></tr>
+<tr><td>tmux</td><td><code>~/.config/grove/templates/tmux.sh</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>Templates are rendered using <a href="https://docs.rs/minijinja/latest/minijinja/">minijinja</a>. The syntax is a subset of <a href="https://jinja.palletsprojects.com/en/stable/templates/">Jinja2</a> — refer to the <a href="https://docs.rs/minijinja/latest/minijinja/syntax/index.html">minijinja template documentation</a> for the full syntax reference.</p>
+<h2 id="template-variables"><a class="header" href="#template-variables">Template variables</a></h2>
+<p>The following variables are available in every template:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variable</th><th>Type</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>worktree_path</code></td><td>string</td><td>Absolute path to the worktree directory, e.g. <code>/home/you/work/myrepo/main</code></td></tr>
+<tr><td><code>shell</code></td><td>string</td><td>The user’s shell binary name, e.g. <code>zsh</code>, <code>bash</code>, or <code>fish</code></td></tr>
+<tr><td><code>session_name</code></td><td>string</td><td>The full session identifier. For zellij: <code>repo/branch</code>. For tmux: <code>repo-branch</code></td></tr>
+<tr><td><code>repo</code></td><td>string</td><td>The repository name, e.g. <code>myrepo</code></td></tr>
+<tr><td><code>branch</code></td><td>string</td><td>The branch name, e.g. <code>main</code> or <code>feat/auth</code></td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="example-custom-zellij-layout"><a class="header" href="#example-custom-zellij-layout">Example: custom zellij layout</a></h2>
+<pre><code class="language-kdl">layout {
+    cwd "{{ worktree_path }}"
+    tab name="shell" focus=true {
+        pane command="{{ shell }}" {}
+    }
+    tab name="editor" {
+        pane split_direction="horizontal" {
+            pane command="nvim" {
+                args "."
+                size "70%"
+            }
+            pane command="{{ shell }}" {}
+        }
+    }
+}
+</code></pre>
+<h2 id="example-custom-tmux-layout"><a class="header" href="#example-custom-tmux-layout">Example: custom tmux layout</a></h2>
+<pre><code class="language-sh">SESSION="{{ session_name }}"
+
+tmux rename-window -t "$SESSION:0" "shell"
+tmux send-keys -t "$SESSION:0" "cd '{{ worktree_path }}' &amp;&amp; {{ shell }}" Enter
+
+tmux new-window -t "$SESSION" -n "editor" -c "{{ worktree_path }}"
+tmux send-keys -t "$SESSION:editor" "nvim ." Enter
+
+tmux select-window -t "$SESSION:shell"
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="frecency"><a class="header" href="#frecency">Frecency</a></h1>
+<p>grove ranks repositories using a <strong>frecency</strong> score — a combination of <em>frequency</em> (how often you use a repo) and <em>recency</em> (how recently you used it). This is the same approach used by <a href="https://github.com/ajeetdsouza/zoxide">zoxide</a> for directory ranking.</p>
+<h2 id="how-it-works"><a class="header" href="#how-it-works">How it works</a></h2>
+<p>Every time you run <code>grove open</code> for a repo, its score is incremented by 1.0 and its <code>last_accessed_at</code> timestamp is updated.</p>
+<p>Repos are sorted by score descending in <code>grove repo list</code> and in the interactive selection prompt in <code>grove open</code>, so your most active repos always appear at the top.</p>
+<h2 id="decay"><a class="header" href="#decay">Decay</a></h2>
+<p>To keep scores bounded over time, grove applies a global multiplicative decay whenever the sum of all scores exceeds <strong>1000</strong>:</p>
+<ol>
+<li>All scores are multiplied by <strong>0.9</strong>.</li>
+<li>Any score that falls below <strong>0.01</strong> is set to zero.</li>
+</ol>
+<p>This means scores naturally converge: a repo you stopped using will gradually fall behind repos you use regularly, without any scores growing unboundedly.</p>
+<h2 id="constants"><a class="header" href="#constants">Constants</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Constant</th><th>Value</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>FRECENCY_MAX_TOTAL</code></td><td>1000.0</td><td>Total score threshold that triggers a decay pass</td></tr>
+<tr><td><code>FRECENCY_DECAY</code></td><td>0.9</td><td>Multiplicative factor applied to all scores on decay</td></tr>
+<tr><td><code>FRECENCY_FLOOR</code></td><td>0.01</td><td>Scores below this are zeroed out after decay</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="example"><a class="header" href="#example">Example</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Event</th><th>Score before</th><th>Score after</th></tr>
+</thead>
+<tbody>
+<tr><td>First <code>grove open myrepo</code></td><td>0.0</td><td>1.0</td></tr>
+<tr><td>Second <code>grove open myrepo</code></td><td>1.0</td><td>2.0</td></tr>
+<tr><td>… 998 more opens across all repos, total reaches 1001</td><td>—</td><td>decay: all scores × 0.9</td></tr>
+<tr><td>Score of a repo with 0.005 after decay</td><td>0.005</td><td>0.0 (floored)</td></tr>
+</tbody>
+</table>
+</div>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="how-it-works-1"><a class="header" href="#how-it-works-1">How It Works</a></h1>
+<p>This page describes grove’s internals for anyone who wants to understand what happens under the hood.</p>
+<h2 id="data-storage"><a class="header" href="#data-storage">Data storage</a></h2>
+<p>grove stores all repository metadata in a SQLite database:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Platform</th><th>Path</th></tr>
+</thead>
+<tbody>
+<tr><td>Linux</td><td><code>~/.local/share/grove/grove.db</code></td></tr>
+<tr><td>macOS</td><td><code>~/Library/Application Support/grove/grove.db</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>The database has a single <code>repos</code> table tracking name, path, remote URL, configured directory, status, frecency score, and timestamps. There is no network dependency — grove is entirely local.</p>
+<h2 id="the-grove-open-flow"><a class="header" href="#the-grove-open-flow">The <code>grove open</code> flow</a></h2>
+<p>When you run <code>grove open myrepo feat/auth</code>:</p>
+<ol>
+<li><strong>Repo lookup</strong> — grove queries the database for a repo matching <code>myrepo</code> (exact name first, then fuzzy substring ordered by frecency).</li>
+<li><strong>Frecency update</strong> — the repo’s score is incremented and <code>last_accessed_at</code> is set.</li>
+<li><strong>Multiplexer resolution</strong> — grove checks which backend to use: the configured <code>multiplexer</code> value, or auto-detection via <code>$ZELLIJ</code> / <code>$TMUX</code> env vars and <code>$PATH</code>.</li>
+<li><strong>Session check</strong> — grove asks the multiplexer for its current session list and looks for a session named <code>myrepo/feat/auth</code> (zellij) or <code>myrepo-feat/auth</code> (tmux). If found, it attaches immediately.</li>
+<li><strong>Worktree check</strong> — grove runs <code>git worktree list</code> on the bare repo and checks whether a worktree for <code>refs/heads/feat/auth</code> already exists.</li>
+<li><strong>Worktree creation</strong> — if no worktree exists, grove runs <code>git worktree add &lt;repo&gt;/feat/auth feat/auth</code>.</li>
+<li><strong>Session creation</strong> — grove renders the layout template with minijinja, writes it to a temp file (zellij) or executes it as a shell script (tmux), then starts the new session.</li>
+</ol>
+<h2 id="container-layout"><a class="header" href="#container-layout">Container layout</a></h2>
+<p>grove stores each repository as a <strong>container directory</strong>. The git data lives in a hidden <code>.bare/</code> subdirectory (e.g. <code>/Users/you/work/myrepo/.bare</code>), and each worktree is a direct subdirectory of the container (e.g. <code>/Users/you/work/myrepo/main</code>, <code>/Users/you/work/myrepo/feat/auth</code>).</p>
+<p>This means you can have as many branches checked out simultaneously as you like, each in its own directory, without any conflicts. Use <code>grove clone</code> to bring in an existing repo, <code>grove repo new</code> to create a fresh one, or <code>grove repo migrate</code> to upgrade a legacy bare repo.</p>
+<h2 id="session-naming"><a class="header" href="#session-naming">Session naming</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Backend</th><th>Session name format</th><th>Example</th></tr>
+</thead>
+<tbody>
+<tr><td>zellij</td><td><code>&lt;repo&gt;/&lt;branch&gt;</code></td><td><code>myrepo/feat/auth</code></td></tr>
+<tr><td>tmux</td><td><code>&lt;repo&gt;-&lt;branch&gt;</code></td><td><code>myrepo-feat-auth</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>tmux does not allow <code>/</code> in session names, so grove substitutes <code>-</code>.</p>
+<h2 id="layout-templates-1"><a class="header" href="#layout-templates-1">Layout templates</a></h2>
+<p>Session layouts are rendered with <a href="https://docs.rs/minijinja/latest/minijinja/">minijinja</a>. For zellij, the rendered KDL is written to a temp file (<code>$TMPDIR/grove-&lt;repo&gt;-&lt;branch&gt;.kdl</code>) which is deleted immediately after the session is created. For tmux, the rendered shell script is executed directly via <code>sh -c</code>.</p>
+<p>User-provided templates in <code>~/.config/grove/templates/</code> take precedence over the built-in defaults. See <a href="#session-layout">Session Layout</a> for the full variable reference.</p>
+<h2 id="config-validation"><a class="header" href="#config-validation">Config validation</a></h2>
+<p>On every startup, grove validates that all configured directory paths exist and are directories. Validation failures are printed to stderr as warnings but do not abort the program.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="contributing"><a class="header" href="#contributing">Contributing</a></h1>
+<p>Contributions are welcome. Please open an issue first to discuss significant changes before submitting a pull request.</p>
+<h2 id="setup-1"><a class="header" href="#setup-1">Setup</a></h2>
+<pre><code class="language-sh">git clone https://github.com/seftontycho/grove
+cd grove
+cargo build
+</code></pre>
+<h2 id="running-tests"><a class="header" href="#running-tests">Running tests</a></h2>
+<pre><code class="language-sh">cargo test
+</code></pre>
+<p>The test suite covers frecency logic (<code>src/db/repo.rs</code>) and git operations (<code>src/git.rs</code>).</p>
+<h2 id="running-the-tool-locally"><a class="header" href="#running-the-tool-locally">Running the tool locally</a></h2>
+<pre><code class="language-sh">cargo run -- --help
+cargo run -- open
+cargo run -- repo list
+</code></pre>
+<p>Or install from your local clone:</p>
+<pre><code class="language-sh">cargo install --path .
+</code></pre>
+<h2 id="project-structure"><a class="header" href="#project-structure">Project structure</a></h2>
+<pre><code>src/
+├── main.rs          # Entry point: parses CLI, loads config/DB, dispatches
+├── cli.rs           # All clap CLI structs and enums
+├── config.rs        # Config struct, shell/multiplexer enums, path helpers
+├── multiplexer.rs   # Multiplexer trait, SessionName, template rendering
+├── zellij.rs        # Zellij backend implementation
+├── tmux.rs          # tmux backend implementation
+├── git.rs           # Git operations (clone, worktree add/list/remove/prune)
+├── db/
+│   ├── mod.rs       # Db struct, migrations, public API
+│   └── repo.rs      # Repo model, CRUD, frecency logic
+└── cmd/
+    ├── open.rs      # grove open
+    ├── clone.rs     # grove clone
+    ├── repo.rs      # grove repo *
+    ├── tree.rs      # grove tree *
+    ├── session.rs   # grove session *
+    ├── config.rs    # grove config *
+    ├── init.rs      # grove init
+    └── completions.rs  # grove completions
+
+templates/
+├── zellij.kdl       # Default zellij layout (minijinja)
+└── tmux.sh          # Default tmux setup script (minijinja)
+</code></pre>
+<h2 id="adding-a-new-multiplexer-backend"><a class="header" href="#adding-a-new-multiplexer-backend">Adding a new multiplexer backend</a></h2>
+<ol>
+<li>Implement the <code>Multiplexer</code> trait from <code>src/multiplexer.rs</code>.</li>
+<li>Add a new variant to <code>MultiplexerBackend</code> and <code>ResolvedBackend</code> in <code>src/config.rs</code>.</li>
+<li>Wire it up in <code>src/main.rs</code> where the backend is resolved.</li>
+<li>Add a default layout template under <code>templates/</code>.</li>
+</ol>
+<h2 id="code-style"><a class="header" href="#code-style">Code style</a></h2>
+<p>grove uses standard <code>rustfmt</code> formatting. Run before submitting:</p>
+<pre><code class="language-sh">cargo fmt
+cargo clippy
+</code></pre>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-c2a407aa.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+
+        <script>
+        window.addEventListener('load', function() {
+            window.setTimeout(window.print, 100);
+        });
+        </script>
+
+
+    </div>
+    </body>
+</html>
