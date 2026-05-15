@@ -67,6 +67,13 @@ pub enum RepoCmd {
         /// Path to the bare repository
         path: String,
     },
+    /// Create a new repository in a configured directory
+    New {
+        /// Repository name
+        name: String,
+        /// Directory name from config (interactive if omitted)
+        dir: Option<String>,
+    },
     /// Stop tracking a repository
     Rm {
         /// Repository name
