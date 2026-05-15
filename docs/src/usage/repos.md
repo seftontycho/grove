@@ -20,7 +20,7 @@ grove repo new my-project work
 grove repo migrate [name]
 ```
 
-Converts a legacy bare repository to the `.bare` container layout in place. Refuses if any worktree has uncommitted changes. Existing worktrees are discarded (branches are preserved — recreate worktrees with `grove open`).
+Converts a legacy bare repository to the `.bare` container layout in place. Existing worktrees are preserved — each is relocated into the new layout with its uncommitted changes intact. A worktree that cannot be relocated automatically is left for `grove open` to recreate.
 
 ## List tracked repos
 

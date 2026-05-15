@@ -61,8 +61,9 @@ grove repo new <name> [dir]
 ### `grove repo migrate`
 
 Convert a legacy bare repository to the `.bare` container layout, in place.
-Refuses if any worktree has uncommitted changes; existing worktrees are
-discarded (branches are preserved — recreate worktrees with `grove open`).
+Existing worktrees are preserved — each is relocated into the new layout with
+its uncommitted changes intact. A worktree that cannot be relocated
+automatically is left for `grove open` to recreate.
 
 ```
 grove repo migrate [name]
