@@ -21,7 +21,7 @@ pub enum Cmd {
         shell: Shell,
     },
 
-    /// Clone a bare repository into a configured directory
+    /// Clone a repository into a configured directory using the .bare container layout
     Clone {
         /// Git remote URL to clone
         url: String,
