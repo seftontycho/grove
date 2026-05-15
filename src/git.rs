@@ -138,6 +138,74 @@ pub fn init_repo(container: &Path, default_branch: &str) -> Result<()> {
     Ok(())
 }
 
+/// Returns true if the worktree has staged or unstaged changes to tracked
+/// files. Untracked files are ignored: in the legacy layout git's own
+/// per-worktree admin files appear as untracked noise.
+pub fn has_uncommitted_tracked_changes(worktree_path: &Path) -> Result<bool> {
+    let output = Command::new("git")
+        .args(["status", "--porcelain", "--untracked-files=no"])
+        .current_dir(worktree_path)
+        .output()
+        .context("Failed to run git status")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!("git status failed: {stderr}");
+    }
+
+    Ok(!output.stdout.is_empty())
+}
+
+/// Convert a legacy bare repository at `repo_path` into the `.bare` container
+/// layout, in place. Assumes `repo_path` is currently a legacy bare repo.
+///
+/// Legacy worktree directories are discarded — branches are preserved in the
+/// bare data; recreate worktrees with `grove open`.
+pub fn migrate_to_container(repo_path: &Path) -> Result<()> {
+    let parent = repo_path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("Cannot migrate a filesystem root"))?;
+    let name = repo_path
+        .file_name()
+        .ok_or_else(|| anyhow::anyhow!("Cannot determine repo directory name"))?;
+
+    let staging = parent.join(format!("{}.grove-migrate-tmp", name.to_string_lossy()));
+    if staging.exists() {
+        bail!("Migration staging path already exists: {}", staging.display());
+    }
+
+    // Move the bare data aside so the original path can become the container.
+    std::fs::rename(repo_path, &staging)
+        .with_context(|| format!("Failed to move {} aside", repo_path.display()))?;
+
+    let result = (|| -> Result<()> {
+        std::fs::create_dir(repo_path)
+            .with_context(|| format!("Failed to create container {}", repo_path.display()))?;
+        let bare = repo_path.join(".bare");
+        std::fs::rename(&staging, &bare)
+            .with_context(|| format!("Failed to move bare data into {}", bare.display()))?;
+        write_gitdir_file(repo_path)?;
+
+        // Drop the tangled legacy worktree directories and their admin
+        // entries, then prune any dangling registrations.
+        let worktrees = bare.join("worktrees");
+        if worktrees.exists() {
+            std::fs::remove_dir_all(&worktrees)
+                .with_context(|| format!("Failed to remove {}", worktrees.display()))?;
+        }
+        run_git(&["worktree", "prune"], &bare)?;
+        Ok(())
+    })();
+
+    // Best-effort rollback if migration failed before the bare data landed.
+    if result.is_err() && staging.exists() && !repo_path.join(".bare").exists() {
+        let _ = std::fs::remove_dir(repo_path);
+        let _ = std::fs::rename(&staging, repo_path);
+    }
+
+    result
+}
+
 /// The result of a successful clone operation.
 pub struct CloneResult {
     pub path: PathBuf,
@@ -433,6 +501,78 @@ mod tests {
     fn detect_rejects_non_repo() {
         let tmp = tempfile::tempdir().unwrap();
         assert!(RepoLayout::detect(tmp.path()).is_err());
+    }
+
+    #[test]
+    fn migrate_converts_legacy_bare_to_container() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("legacy");
+
+        // Build a legacy bare repo with a legacy-style worktree (reproducing
+        // the old collision: worktree placed under <bare>/worktrees/).
+        init_bare_at(&repo, "master").unwrap();
+        let legacy_wt = repo.join("worktrees").join("feat");
+        run_git(
+            &[
+                "worktree",
+                "add",
+                "-B",
+                "feat",
+                legacy_wt.to_str().unwrap(),
+            ],
+            &repo,
+        )
+        .unwrap();
+
+        migrate_to_container(&repo).unwrap();
+
+        // Container layout in place at the same path.
+        assert!(repo.join(".bare").join("HEAD").is_file());
+        assert_eq!(
+            std::fs::read_to_string(repo.join(".git")).unwrap(),
+            "gitdir: ./.bare\n"
+        );
+        // Legacy worktree directories are gone.
+        assert!(!repo.join(".bare").join("worktrees").exists());
+
+        // Branches are preserved.
+        let bare = repo.join(".bare");
+        let branches =
+            run_git_capture(&["branch", "--format=%(refname:short)"], &bare).unwrap();
+        assert!(branches.lines().any(|b| b == "master"));
+        assert!(branches.lines().any(|b| b == "feat"));
+    }
+
+    #[test]
+    fn has_uncommitted_tracked_changes_detects_modifications() {
+        let tmp = tempfile::tempdir().unwrap();
+        let container = tmp.path().join("myrepo");
+        init_repo(&container, "master").unwrap();
+        let wt = worktree_add(&container, "master").unwrap();
+
+        // Clean worktree: no tracked changes.
+        assert!(!has_uncommitted_tracked_changes(&wt).unwrap());
+
+        // Add and commit a file, then modify it.
+        std::fs::write(wt.join("file.txt"), "one\n").unwrap();
+        run_git(&["add", "file.txt"], &wt).unwrap();
+        run_git(
+            &[
+                "-c",
+                "user.name=grove",
+                "-c",
+                "user.email=grove@localhost",
+                "commit",
+                "-m",
+                "add file",
+            ],
+            &wt,
+        )
+        .unwrap();
+        assert!(!has_uncommitted_tracked_changes(&wt).unwrap());
+
+        std::fs::write(wt.join("file.txt"), "two\n").unwrap();
+        assert!(has_uncommitted_tracked_changes(&wt).unwrap());
     }
 
     #[test]
