@@ -1,5 +1,5 @@
 use anyhow::{bail, Result};
-use dialoguer::{Confirm, FuzzySelect};
+use dialoguer::FuzzySelect;
 
 use crate::db::{Db, Repo, RepoFilter};
 use crate::git::{self, RepoLayout};
@@ -31,41 +31,8 @@ pub fn migrate(db: &Db, name: Option<&str>) -> Result<()> {
         );
     }
 
-    // Refuse if any worktree has uncommitted changes to tracked files.
-    let worktrees = git::worktree_list(&repo.path)?;
-    let non_bare: Vec<_> = worktrees.iter().filter(|w| !w.is_bare).collect();
-
-    let mut dirty = Vec::new();
-    for wt in &non_bare {
-        if git::has_uncommitted_tracked_changes(&wt.path)? {
-            dirty.push(wt.path.clone());
-        }
-    }
-    if !dirty.is_empty() {
-        eprintln!(
-            "Cannot migrate '{}': worktrees have uncommitted changes:",
-            repo.name
-        );
-        for p in &dirty {
-            eprintln!("  {}", p.display());
-        }
-        bail!("Commit or stash these changes, then retry");
-    }
-
-    let proceed = Confirm::new()
-        .with_prompt(format!(
-            "Migrating '{}' discards {} worktree(s) (branches are kept; \
-             recreate worktrees with `grove open`). Continue?",
-            repo.name,
-            non_bare.len()
-        ))
-        .default(false)
-        .interact()?;
-    if !proceed {
-        println!("Migration cancelled");
-        return Ok(());
-    }
-
+    // Migration is non-destructive: worktrees (and their uncommitted changes)
+    // are relocated into the new layout, not discarded.
     git::migrate_to_container(&repo.path)?;
     println!(
         "Migrated '{}' to the container layout at {}",

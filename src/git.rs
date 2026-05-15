@@ -138,35 +138,24 @@ pub fn init_repo(container: &Path, default_branch: &str) -> Result<()> {
     Ok(())
 }
 
-/// Returns true if the worktree has staged or unstaged changes to tracked
-/// files. Untracked files are ignored: in the legacy layout git's own
-/// per-worktree admin files appear as untracked noise.
-pub fn has_uncommitted_tracked_changes(worktree_path: &Path) -> Result<bool> {
-    let output = Command::new("git")
-        .args(["status", "--porcelain", "--untracked-files=no"])
-        .current_dir(worktree_path)
-        .output()
-        .context("Failed to run git status")?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        bail!("git status failed: {stderr}");
-    }
-
-    Ok(!output.stdout.is_empty())
-}
-
 /// Convert a legacy bare repository at `repo_path` into the `.bare` container
 /// layout, in place. Assumes `repo_path` is currently a legacy bare repo.
 ///
-/// Legacy worktree directories are discarded — branches are preserved in the
-/// bare data; recreate worktrees with `grove open`.
-///
 /// The conversion (move aside → create container → move bare data in → write
 /// the `.git` pointer) either fully completes or is rolled back to the
-/// original legacy layout. Cleanup of stale legacy worktrees afterwards is
-/// best-effort and never fails the migration.
+/// original legacy layout.
+///
+/// Existing worktrees are preserved: each checkout is relocated to
+/// `<container>/<branch>` and its git admin files are disentangled into a
+/// clean admin directory. Worktree relocation is best-effort — a worktree that
+/// cannot be relocated is left for `grove open` to recreate and does not fail
+/// the migration.
 pub fn migrate_to_container(repo_path: &Path) -> Result<()> {
+    let repo_path = repo_path
+        .canonicalize()
+        .with_context(|| format!("Cannot access {}", repo_path.display()))?;
+    let repo_path = repo_path.as_path();
+
     let parent = repo_path
         .parent()
         .ok_or_else(|| anyhow::anyhow!("Cannot migrate a filesystem root"))?;
@@ -178,6 +167,24 @@ pub fn migrate_to_container(repo_path: &Path) -> Result<()> {
     if staging.exists() {
         bail!("Migration staging path already exists: {}", staging.display());
     }
+
+    // Enumerate worktrees before moving anything — their registrations point
+    // at the current on-disk paths. Each entry is (branch, path relative to
+    // the bare repo) so it can be located again after the bare data moves.
+    let linked: Vec<(String, PathBuf)> = worktree_list(repo_path)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|wt| !wt.is_bare)
+        .filter_map(|wt| {
+            let branch = wt
+                .branch
+                .as_deref()?
+                .strip_prefix("refs/heads/")?
+                .to_string();
+            let rel = wt.path.strip_prefix(repo_path).ok()?.to_path_buf();
+            Some((branch, rel))
+        })
+        .collect();
 
     // Move the bare data aside so the original path can become the container.
     std::fs::rename(repo_path, &staging)
@@ -208,22 +215,124 @@ pub fn migrate_to_container(repo_path: &Path) -> Result<()> {
         )));
     }
 
-    // The layout is now converted: the bare data is at `<repo_path>/.bare`
-    // and `detect()` recognizes the container. Dropping the tangled legacy
-    // worktree directories and pruning stale registrations is cosmetic —
-    // best-effort, never fails the migration.
-    let worktrees = bare.join("worktrees");
-    if worktrees.exists() {
-        if let Err(e) = std::fs::remove_dir_all(&worktrees) {
+    // The layout is converted. Relocate each worktree into it — best-effort,
+    // so a single failure does not undo the migration.
+    for (branch, rel) in &linked {
+        if let Err(e) = relocate_worktree(repo_path, &bare, branch, rel) {
             eprintln!(
-                "Warning: migrated, but failed to remove stale worktrees at {}: {e}",
-                worktrees.display()
+                "Warning: migrated, but could not relocate worktree '{branch}': {e:#}\n  \
+                 recreate it later with `grove open {} {branch}`",
+                name.to_string_lossy()
             );
         }
     }
     let _ = run_git(&["worktree", "prune"], &bare);
 
     Ok(())
+}
+
+/// Relocate one legacy worktree into the container layout: move its checkout
+/// to `<container>/<branch>` and disentangle the git admin files (which the
+/// legacy layout tangled into the checkout) into a clean admin directory.
+fn relocate_worktree(container: &Path, bare: &Path, branch: &str, rel: &Path) -> Result<()> {
+    // A `/` in the branch means git's admin directory was never collided into
+    // the checkout the way it is for flat branch names; leave those for
+    // `grove open` to recreate.
+    if branch.contains('/') {
+        bail!("branch names containing '/' are not auto-relocated");
+    }
+
+    // After the bare data moved, the tangled worktree directory sits at the
+    // same path relative to the (now nested) bare repo.
+    let tangled = bare.join(rel);
+    if !tangled.join("HEAD").is_file() {
+        bail!("{} is not a recognizable legacy worktree", tangled.display());
+    }
+
+    let new_checkout = container.join(branch);
+    if new_checkout.exists() {
+        bail!("{} already exists", new_checkout.display());
+    }
+    let new_admin = bare.join("worktrees").join(branch);
+
+    // Move the whole tangled directory to the checkout location, then pull the
+    // git admin files back out into a clean admin directory.
+    std::fs::rename(&tangled, &new_checkout).with_context(|| {
+        format!(
+            "Failed to move {} to {}",
+            tangled.display(),
+            new_checkout.display()
+        )
+    })?;
+    std::fs::create_dir_all(&new_admin)
+        .with_context(|| format!("Failed to create admin dir {}", new_admin.display()))?;
+
+    for entry in admin_entries(&new_checkout) {
+        let file_name = entry
+            .file_name()
+            .ok_or_else(|| anyhow::anyhow!("admin entry has no name"))?;
+        std::fs::rename(&entry, new_admin.join(file_name))
+            .with_context(|| format!("Failed to relocate admin entry {}", entry.display()))?;
+    }
+
+    // Replace the checkout's self-referential `.git` with a pointer to the
+    // admin directory, and link the admin directory back to the checkout.
+    let _ = std::fs::remove_file(new_checkout.join(".git"));
+    std::fs::write(new_admin.join("commondir"), "../..\n")
+        .with_context(|| format!("Failed to write {}/commondir", new_admin.display()))?;
+    std::fs::write(
+        new_admin.join("gitdir"),
+        format!("{}\n", new_checkout.join(".git").display()),
+    )
+    .with_context(|| format!("Failed to write {}/gitdir", new_admin.display()))?;
+    std::fs::write(
+        new_checkout.join(".git"),
+        format!("gitdir: {}\n", new_admin.display()),
+    )
+    .with_context(|| format!("Failed to write {}/.git", new_checkout.display()))?;
+
+    Ok(())
+}
+
+/// Git per-worktree admin files. In the legacy layout these were tangled into
+/// the worktree checkout alongside the project's own files.
+fn admin_entries(worktree_dir: &Path) -> Vec<PathBuf> {
+    const ADMIN_FILES: &[&str] = &[
+        "HEAD",
+        "ORIG_HEAD",
+        "FETCH_HEAD",
+        "MERGE_HEAD",
+        "MERGE_MSG",
+        "MERGE_MODE",
+        "MERGE_RR",
+        "CHERRY_PICK_HEAD",
+        "REVERT_HEAD",
+        "AUTO_MERGE",
+        "BISECT_LOG",
+        "BISECT_START",
+        "COMMIT_EDITMSG",
+        "index",
+        "commondir",
+        "gitdir",
+        "packed-refs",
+        "sparse-checkout",
+        "shallow",
+    ];
+
+    let mut found: Vec<PathBuf> = ADMIN_FILES
+        .iter()
+        .map(|n| worktree_dir.join(n))
+        .filter(|p| p.is_file())
+        .collect();
+
+    // `logs/` — only git's, identified by a `logs/HEAD` file, so a project
+    // directory that happens to be named `logs` is left alone.
+    let logs = worktree_dir.join("logs");
+    if logs.is_dir() && logs.join("HEAD").is_file() {
+        found.push(logs);
+    }
+
+    found
 }
 
 /// The result of a successful clone operation.
@@ -533,16 +642,12 @@ mod tests {
         init_bare_at(&repo, "master").unwrap();
         let legacy_wt = repo.join("worktrees").join("feat");
         run_git(
-            &[
-                "worktree",
-                "add",
-                "-B",
-                "feat",
-                legacy_wt.to_str().unwrap(),
-            ],
+            &["worktree", "add", "-B", "feat", legacy_wt.to_str().unwrap()],
             &repo,
         )
         .unwrap();
+        // Leave an uncommitted change in the worktree — it must survive.
+        std::fs::write(legacy_wt.join("scratch.txt"), "work in progress\n").unwrap();
 
         migrate_to_container(&repo).unwrap();
 
@@ -552,8 +657,25 @@ mod tests {
             std::fs::read_to_string(repo.join(".git")).unwrap(),
             "gitdir: ./.bare\n"
         );
-        // Legacy worktree directories are gone.
-        assert!(!repo.join(".bare").join("worktrees").exists());
+
+        // The worktree was relocated to <container>/<branch>, not discarded,
+        // and its uncommitted file came along.
+        let feat = repo.join("feat");
+        assert!(feat.join(".git").is_file());
+        assert_eq!(
+            std::fs::read_to_string(feat.join("scratch.txt")).unwrap(),
+            "work in progress\n"
+        );
+
+        // git recognizes the relocated worktree and its HEAD is intact.
+        let trees = worktree_list(&repo).unwrap();
+        assert!(
+            trees.iter().any(|t| !t.is_bare && t.path.ends_with("feat")),
+            "relocated worktree 'feat' should be listed"
+        );
+        let head_branch =
+            run_git_capture(&["rev-parse", "--abbrev-ref", "HEAD"], &feat).unwrap();
+        assert_eq!(head_branch, "feat");
 
         // Branches are preserved.
         let bare = repo.join(".bare");
@@ -561,38 +683,6 @@ mod tests {
             run_git_capture(&["branch", "--format=%(refname:short)"], &bare).unwrap();
         assert!(branches.lines().any(|b| b == "master"));
         assert!(branches.lines().any(|b| b == "feat"));
-    }
-
-    #[test]
-    fn has_uncommitted_tracked_changes_detects_modifications() {
-        let tmp = tempfile::tempdir().unwrap();
-        let container = tmp.path().join("myrepo");
-        init_repo(&container, "master").unwrap();
-        let wt = worktree_add(&container, "master").unwrap();
-
-        // Clean worktree: no tracked changes.
-        assert!(!has_uncommitted_tracked_changes(&wt).unwrap());
-
-        // Add and commit a file, then modify it.
-        std::fs::write(wt.join("file.txt"), "one\n").unwrap();
-        run_git(&["add", "file.txt"], &wt).unwrap();
-        run_git(
-            &[
-                "-c",
-                "user.name=grove",
-                "-c",
-                "user.email=grove@localhost",
-                "commit",
-                "-m",
-                "add file",
-            ],
-            &wt,
-        )
-        .unwrap();
-        assert!(!has_uncommitted_tracked_changes(&wt).unwrap());
-
-        std::fs::write(wt.join("file.txt"), "two\n").unwrap();
-        assert!(has_uncommitted_tracked_changes(&wt).unwrap());
     }
 
     #[test]
