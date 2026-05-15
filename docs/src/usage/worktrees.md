@@ -13,9 +13,9 @@ Lists all worktrees for a repository, including the bare root. If `repo` is omit
 Example output:
 
 ```
-  refs/heads/main [bare]  a1b2c3d4  /Users/you/work/myrepo
-  refs/heads/feat/auth    e5f6a7b8  /Users/you/work/myrepo/worktrees/feat/auth
-  refs/heads/hotfix-123   c9d0e1f2  /Users/you/work/myrepo/worktrees/hotfix-123
+  refs/heads/main [bare]  a1b2c3d4  /Users/you/work/myrepo/.bare
+  refs/heads/feat/auth    e5f6a7b8  /Users/you/work/myrepo/feat/auth
+  refs/heads/hotfix-123   c9d0e1f2  /Users/you/work/myrepo/hotfix-123
 ```
 
 ## Close a worktree

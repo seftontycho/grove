@@ -41,7 +41,7 @@ The following variables are available in every template:
 
 | Variable | Type | Description |
 |----------|------|-------------|
-| `worktree_path` | string | Absolute path to the worktree directory, e.g. `/home/you/work/myrepo/worktrees/main` |
+| `worktree_path` | string | Absolute path to the worktree directory, e.g. `/home/you/work/myrepo/main` |
 | `shell` | string | The user's shell binary name, e.g. `zsh`, `bash`, or `fish` |
 | `session_name` | string | The full session identifier. For zellij: `repo/branch`. For tmux: `repo-branch` |
 | `repo` | string | The repository name, e.g. `myrepo` |

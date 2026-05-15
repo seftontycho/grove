@@ -1,6 +1,6 @@
 # Cloning Repositories
 
-`grove clone` clones a remote repository as a **bare** git repository into one of your configured directories, and automatically registers it in grove's tracking database.
+`grove clone` clones a remote repository into one of your configured directories using the `.bare` container layout, and automatically registers it in grove's tracking database.
 
 ## Usage
 
@@ -27,7 +27,7 @@ grove clone git@github.com:your-org/your-repo.git
 ## What happens
 
 1. The repository name is inferred from the URL (e.g. `your-repo` from `your-org/your-repo.git`).
-2. The repo is cloned bare into `<directory-path>/<repo-name>` (e.g. `/Users/you/work/your-repo`).
+2. The repo is cloned as a container directory at `<directory-path>/<repo-name>` (e.g. `/Users/you/work/your-repo`), with git data in `.bare/` and worktrees as direct subdirectories.
 3. The repo is added to grove's database so it appears in `grove open` and `grove repo list`.
 
 ## Prerequisites
