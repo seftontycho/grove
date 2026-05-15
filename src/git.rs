@@ -161,6 +161,11 @@ pub fn has_uncommitted_tracked_changes(worktree_path: &Path) -> Result<bool> {
 ///
 /// Legacy worktree directories are discarded — branches are preserved in the
 /// bare data; recreate worktrees with `grove open`.
+///
+/// The conversion (move aside → create container → move bare data in → write
+/// the `.git` pointer) either fully completes or is rolled back to the
+/// original legacy layout. Cleanup of stale legacy worktrees afterwards is
+/// best-effort and never fails the migration.
 pub fn migrate_to_container(repo_path: &Path) -> Result<()> {
     let parent = repo_path
         .parent()
@@ -178,32 +183,47 @@ pub fn migrate_to_container(repo_path: &Path) -> Result<()> {
     std::fs::rename(repo_path, &staging)
         .with_context(|| format!("Failed to move {} aside", repo_path.display()))?;
 
-    let result = (|| -> Result<()> {
+    // Convert the layout. Every step here is rolled back as a unit on failure.
+    let bare = repo_path.join(".bare");
+    let convert = (|| -> Result<()> {
         std::fs::create_dir(repo_path)
             .with_context(|| format!("Failed to create container {}", repo_path.display()))?;
-        let bare = repo_path.join(".bare");
         std::fs::rename(&staging, &bare)
             .with_context(|| format!("Failed to move bare data into {}", bare.display()))?;
         write_gitdir_file(repo_path)?;
-
-        // Drop the tangled legacy worktree directories and their admin
-        // entries, then prune any dangling registrations.
-        let worktrees = bare.join("worktrees");
-        if worktrees.exists() {
-            std::fs::remove_dir_all(&worktrees)
-                .with_context(|| format!("Failed to remove {}", worktrees.display()))?;
-        }
-        run_git(&["worktree", "prune"], &bare)?;
         Ok(())
     })();
 
-    // Best-effort rollback if migration failed before the bare data landed.
-    if result.is_err() && staging.exists() && !repo_path.join(".bare").exists() {
+    if let Err(e) = convert {
+        // Roll back to the original legacy layout, undoing whatever happened.
+        if bare.exists() && !staging.exists() {
+            let _ = std::fs::rename(&bare, &staging);
+        }
+        let _ = std::fs::remove_file(repo_path.join(".git"));
         let _ = std::fs::remove_dir(repo_path);
         let _ = std::fs::rename(&staging, repo_path);
+        return Err(e.context(format!(
+            "Migration rolled back; {} left unchanged",
+            repo_path.display()
+        )));
     }
 
-    result
+    // The layout is now converted: the bare data is at `<repo_path>/.bare`
+    // and `detect()` recognizes the container. Dropping the tangled legacy
+    // worktree directories and pruning stale registrations is cosmetic —
+    // best-effort, never fails the migration.
+    let worktrees = bare.join("worktrees");
+    if worktrees.exists() {
+        if let Err(e) = std::fs::remove_dir_all(&worktrees) {
+            eprintln!(
+                "Warning: migrated, but failed to remove stale worktrees at {}: {e}",
+                worktrees.display()
+            );
+        }
+    }
+    let _ = run_git(&["worktree", "prune"], &bare);
+
+    Ok(())
 }
 
 /// The result of a successful clone operation.
