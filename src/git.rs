@@ -144,26 +144,47 @@ pub struct CloneResult {
     pub name: String,
 }
 
-/// Clone a bare repository into `parent_dir`.
+/// Clone a repository into the `.bare` container layout under `parent_dir`.
 pub fn clone_bare(url: &str, parent_dir: &Path) -> Result<CloneResult> {
     let name = repo_name_from_url(url)?;
-    let dest = parent_dir.join(&name);
+    let container = parent_dir.join(&name);
 
-    if dest.exists() {
-        bail!("Destination already exists: {}", dest.display());
+    if container.exists() {
+        bail!("Destination already exists: {}", container.display());
     }
 
+    let bare = container.join(".bare");
     let status = Command::new("git")
         .args(["clone", "--bare", url])
-        .arg(&dest)
+        .arg(&bare)
         .status()
         .context("Failed to run git clone")?;
 
     if !status.success() {
+        // Clean up a partially-created container.
+        let _ = std::fs::remove_dir_all(&container);
         bail!("git clone --bare failed for {url}");
     }
 
-    Ok(CloneResult { path: dest, name })
+    write_gitdir_file(&container)?;
+
+    // A plain `--bare` clone maps remote branches into local refs/heads/*.
+    // Rewrite the refspec and re-fetch so they appear as origin/* tracking
+    // branches, which `grove open`'s branch picker reads.
+    run_git(
+        &[
+            "config",
+            "remote.origin.fetch",
+            "+refs/heads/*:refs/remotes/origin/*",
+        ],
+        &bare,
+    )?;
+    run_git(&["fetch", "origin"], &bare)?;
+
+    Ok(CloneResult {
+        path: container,
+        name,
+    })
 }
 
 /// Extract a repository name from a URL.
@@ -412,6 +433,32 @@ mod tests {
     fn detect_rejects_non_repo() {
         let tmp = tempfile::tempdir().unwrap();
         assert!(RepoLayout::detect(tmp.path()).is_err());
+    }
+
+    #[test]
+    fn clone_bare_produces_container_layout() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        // A bare repo to act as the clone source.
+        let source = tmp.path().join("source");
+        init_bare_at(&source, "master").unwrap();
+
+        let parent = tmp.path().join("dest");
+        std::fs::create_dir_all(&parent).unwrap();
+
+        let result = clone_bare(source.to_str().unwrap(), &parent).unwrap();
+
+        assert_eq!(result.name, "source");
+        assert_eq!(result.path, parent.join("source"));
+        assert!(result.path.join(".bare").join("HEAD").is_file());
+        assert_eq!(
+            std::fs::read_to_string(result.path.join(".git")).unwrap(),
+            "gitdir: ./.bare\n"
+        );
+        assert!(matches!(
+            RepoLayout::detect(&result.path).unwrap(),
+            RepoLayout::Container { .. }
+        ));
     }
 
     #[test]
