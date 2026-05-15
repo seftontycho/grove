@@ -33,6 +33,9 @@ fn main() -> Result<()> {
             RepoCmd::New { name, dir } => {
                 return cmd::repo::new(&db, &config, name, dir.as_deref())
             }
+            RepoCmd::Migrate { name } => {
+                return cmd::repo::migrate(&db, name.as_deref())
+            }
             RepoCmd::Add { path } => return cmd::repo::add(&db, path),
             RepoCmd::Rm { name } => return cmd::repo::rm(&db, name),
             RepoCmd::List => return cmd::repo::list(&db),

@@ -81,6 +81,11 @@ pub enum RepoCmd {
     },
     /// List tracked repositories
     List,
+    /// Migrate a legacy bare repository to the .bare container layout
+    Migrate {
+        /// Repository name (interactive if omitted)
+        name: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
