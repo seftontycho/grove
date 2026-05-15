@@ -64,7 +64,7 @@ pub enum Cmd {
 pub enum RepoCmd {
     /// Track an existing local repository
     Add {
-        /// Path to the bare repository
+        /// Path to the repository directory (container or bare)
         path: String,
     },
     /// Create a new repository in a configured directory
