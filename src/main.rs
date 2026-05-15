@@ -30,6 +30,9 @@ fn main() -> Result<()> {
             ConfigCmd::Edit => return cmd::config::edit(),
         },
         Cmd::Repo(sub) => match sub {
+            RepoCmd::New { name, dir } => {
+                return cmd::repo::new(&db, &config, name, dir.as_deref())
+            }
             RepoCmd::Add { path } => return cmd::repo::add(&db, path),
             RepoCmd::Rm { name } => return cmd::repo::rm(&db, name),
             RepoCmd::List => return cmd::repo::list(&db),

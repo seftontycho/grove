@@ -50,7 +50,7 @@ pub fn run(db: &Db, config: &Config, url: &str, dir: Option<&str>) -> Result<()>
     Ok(())
 }
 
-fn select_directory(config: &Config) -> Result<String> {
+pub(crate) fn select_directory(config: &Config) -> Result<String> {
     let names = config.dir_names();
     if names.len() == 1 {
         return Ok(names[0].to_string());
