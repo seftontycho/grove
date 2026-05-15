@@ -14,11 +14,18 @@ pub fn migrate(db: &Db, name: Option<&str>) -> Result<()> {
     }
 
     // Refuse if the shell is currently inside the repo being migrated — its
-    // path is renamed during migration.
+    // path is renamed during migration. Canonicalize so the comparison is
+    // reliable even when repo.path was stored non-canonically (e.g. via a
+    // relative or symlinked config directory).
     let cwd = std::env::current_dir()?;
-    if cwd.starts_with(&repo.path) {
+    let repo_path = repo
+        .path
+        .canonicalize()
+        .unwrap_or_else(|_| repo.path.clone());
+    if cwd.starts_with(&repo_path) {
         bail!(
-            "Cannot migrate '{}' while inside it ({}). cd elsewhere and retry.",
+            "Cannot migrate '{}' while inside it ({}). \
+             Run this from outside the repo.",
             repo.name,
             repo.path.display()
         );
@@ -74,6 +81,8 @@ fn resolve_repo(db: &Db, name: Option<&str>) -> Result<Repo> {
             .find_repo(q)?
             .ok_or_else(|| anyhow::anyhow!("No repo found matching '{q}'")),
         None => {
+            // No status filter: a legacy or inactive repo is still a valid
+            // migration target, unlike `grove open` / `grove tree`.
             let repos = db.list_repos(RepoFilter::default())?;
             if repos.is_empty() {
                 bail!("No repos tracked.");
