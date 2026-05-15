@@ -257,12 +257,13 @@ fn parse_worktree_list(output: &str) -> Result<Vec<Worktree>> {
 
 /// Create a new worktree. Returns the path to the created worktree.
 pub fn worktree_add(repo_path: &Path, branch: &str) -> Result<PathBuf> {
-    let worktree_dir = repo_path.join("worktrees").join(branch);
+    let layout = RepoLayout::detect(repo_path)?;
+    let worktree_dir = layout.worktree_path(branch);
 
     let status = Command::new("git")
         .args(["worktree", "add", "-B", branch])
         .arg(&worktree_dir)
-        .current_dir(repo_path)
+        .current_dir(layout.git_dir())
         .status()
         .context("Failed to run git worktree add")?;
 
@@ -407,6 +408,20 @@ mod tests {
     fn detect_rejects_non_repo() {
         let tmp = tempfile::tempdir().unwrap();
         assert!(RepoLayout::detect(tmp.path()).is_err());
+    }
+
+    #[test]
+    fn worktree_add_places_worktree_at_container_root() {
+        let tmp = tempfile::tempdir().unwrap();
+        let container = tmp.path().join("myrepo");
+        init_repo(&container, "master").unwrap();
+
+        let wt = worktree_add(&container, "master").unwrap();
+
+        // Worktree is a direct child of the container, NOT under worktrees/.
+        assert_eq!(wt, container.join("master"));
+        assert!(wt.join(".git").is_file());
+        assert!(!container.join("worktrees").exists());
     }
 
     #[test]
