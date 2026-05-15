@@ -198,9 +198,10 @@ pub struct Worktree {
 
 /// List worktrees for a repository.
 pub fn worktree_list(repo_path: &Path) -> Result<Vec<Worktree>> {
+    let layout = RepoLayout::detect(repo_path)?;
     let output = Command::new("git")
         .args(["worktree", "list", "--porcelain"])
-        .current_dir(repo_path)
+        .current_dir(layout.git_dir())
         .output()
         .context("Failed to run git worktree list")?;
 
@@ -276,10 +277,11 @@ pub fn worktree_add(repo_path: &Path, branch: &str) -> Result<PathBuf> {
 
 /// Remove a worktree.
 pub fn worktree_remove(repo_path: &Path, worktree_path: &Path) -> Result<()> {
+    let layout = RepoLayout::detect(repo_path)?;
     let status = Command::new("git")
         .args(["worktree", "remove"])
         .arg(worktree_path)
-        .current_dir(repo_path)
+        .current_dir(layout.git_dir())
         .status()
         .context("Failed to run git worktree remove")?;
 
@@ -292,9 +294,10 @@ pub fn worktree_remove(repo_path: &Path, worktree_path: &Path) -> Result<()> {
 
 /// Prune stale worktree entries.
 pub fn worktree_prune(repo_path: &Path) -> Result<()> {
+    let layout = RepoLayout::detect(repo_path)?;
     let status = Command::new("git")
         .args(["worktree", "prune"])
-        .current_dir(repo_path)
+        .current_dir(layout.git_dir())
         .status()
         .context("Failed to run git worktree prune")?;
 
@@ -307,9 +310,10 @@ pub fn worktree_prune(repo_path: &Path) -> Result<()> {
 
 /// List remote branches for a repository.
 pub fn list_remote_branches(repo_path: &Path) -> Result<Vec<String>> {
+    let layout = RepoLayout::detect(repo_path)?;
     let output = Command::new("git")
         .args(["branch", "-r", "--format=%(refname:short)"])
-        .current_dir(repo_path)
+        .current_dir(layout.git_dir())
         .output()
         .context("Failed to run git branch -r")?;
 
@@ -408,6 +412,17 @@ mod tests {
     fn detect_rejects_non_repo() {
         let tmp = tempfile::tempdir().unwrap();
         assert!(RepoLayout::detect(tmp.path()).is_err());
+    }
+
+    #[test]
+    fn worktree_list_works_for_container_layout() {
+        let tmp = tempfile::tempdir().unwrap();
+        let container = tmp.path().join("myrepo");
+        init_repo(&container, "master").unwrap();
+        let wt = worktree_add(&container, "master").unwrap();
+
+        let trees = worktree_list(&container).unwrap();
+        assert!(trees.iter().any(|t| t.path == wt && !t.is_bare));
     }
 
     #[test]
