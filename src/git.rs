@@ -378,6 +378,41 @@ pub fn clone_bare(url: &str, parent_dir: &Path) -> Result<CloneResult> {
     )?;
     run_git(&["fetch", "origin"], &bare)?;
 
+    // `git clone --bare` populated refs/heads/* with the source's branches.
+    // Those duplicate the refs/remotes/origin/* tracking refs we now have,
+    // and worse, they prevent `git worktree add -b <branch> <path>
+    // origin/<branch>` from setting up tracking later. Delete every local
+    // head except the default branch, and configure its upstream so git
+    // pull/push work in its worktree.
+    let default_branch = run_git_capture(&["symbolic-ref", "--short", "HEAD"], &bare)?;
+    let default_ref = format!("refs/heads/{default_branch}");
+    let heads = run_git_capture(
+        &["for-each-ref", "--format=%(refname)", "refs/heads/"],
+        &bare,
+    )?;
+    for head in heads.lines() {
+        if head == default_ref {
+            continue;
+        }
+        run_git(&["update-ref", "-d", head], &bare)?;
+    }
+    run_git(
+        &[
+            "config",
+            &format!("branch.{default_branch}.remote"),
+            "origin",
+        ],
+        &bare,
+    )?;
+    run_git(
+        &[
+            "config",
+            &format!("branch.{default_branch}.merge"),
+            &default_ref,
+        ],
+        &bare,
+    )?;
+
     Ok(CloneResult {
         path: container,
         name,
@@ -709,6 +744,51 @@ mod tests {
             RepoLayout::detect(&result.path).unwrap(),
             RepoLayout::Container { .. }
         ));
+    }
+
+    #[test]
+    fn clone_bare_leaves_only_default_branch_local() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        let source = tmp.path().join("source");
+        init_bare_at(&source, "master").unwrap();
+
+        // Add feat + fix to source.
+        let master_commit =
+            run_git_capture(&["rev-parse", "refs/heads/master"], &source).unwrap();
+        for branch in ["feat", "fix"] {
+            run_git(
+                &["update-ref", &format!("refs/heads/{branch}"), &master_commit],
+                &source,
+            )
+            .unwrap();
+        }
+
+        let dest = tmp.path().join("dest");
+        std::fs::create_dir_all(&dest).unwrap();
+        let cloned = clone_bare(source.to_str().unwrap(), &dest).unwrap();
+        let bare = cloned.path.join(".bare");
+
+        // Local refs/heads should only contain the default branch (master).
+        let locals = run_git_capture(&["branch", "--format=%(refname:short)"], &bare).unwrap();
+        let mut locals: Vec<&str> = locals.lines().collect();
+        locals.sort();
+        assert_eq!(locals, vec!["master"]);
+
+        // Remote-tracking refs should contain ALL the source's branches.
+        let remotes =
+            run_git_capture(&["branch", "-r", "--format=%(refname:short)"], &bare).unwrap();
+        assert!(remotes.lines().any(|r| r == "origin/feat"));
+        assert!(remotes.lines().any(|r| r == "origin/fix"));
+        assert!(remotes.lines().any(|r| r == "origin/master"));
+
+        // Default branch should have upstream set so git pull/push work.
+        let remote_cfg =
+            run_git_capture(&["config", "branch.master.remote"], &bare).unwrap();
+        let merge_cfg =
+            run_git_capture(&["config", "branch.master.merge"], &bare).unwrap();
+        assert_eq!(remote_cfg, "origin");
+        assert_eq!(merge_cfg, "refs/heads/master");
     }
 
     #[test]
