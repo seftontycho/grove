@@ -384,34 +384,41 @@ pub fn clone_bare(url: &str, parent_dir: &Path) -> Result<CloneResult> {
     // origin/<branch>` from setting up tracking later. Delete every local
     // head except the default branch, and configure its upstream so git
     // pull/push work in its worktree.
-    let default_branch = run_git_capture(&["symbolic-ref", "--short", "HEAD"], &bare)?;
-    let default_ref = format!("refs/heads/{default_branch}");
-    let heads = run_git_capture(
-        &["for-each-ref", "--format=%(refname)", "refs/heads/"],
-        &bare,
-    )?;
-    for head in heads.lines() {
-        if head == default_ref {
-            continue;
+    //
+    // If HEAD is detached (unusual but possible for sources without a
+    // symbolic HEAD), there is no "default branch" to preserve; skip the
+    // cleanup entirely rather than failing the clone.
+    if let Ok(default_branch) =
+        run_git_capture(&["symbolic-ref", "--short", "HEAD"], &bare)
+    {
+        let default_ref = format!("refs/heads/{default_branch}");
+        let heads = run_git_capture(
+            &["for-each-ref", "--format=%(refname)", "refs/heads/"],
+            &bare,
+        )?;
+        for head in heads.lines() {
+            if head == default_ref {
+                continue;
+            }
+            run_git(&["update-ref", "-d", head], &bare)?;
         }
-        run_git(&["update-ref", "-d", head], &bare)?;
+        run_git(
+            &[
+                "config",
+                &format!("branch.{default_branch}.remote"),
+                "origin",
+            ],
+            &bare,
+        )?;
+        run_git(
+            &[
+                "config",
+                &format!("branch.{default_branch}.merge"),
+                &default_ref,
+            ],
+            &bare,
+        )?;
     }
-    run_git(
-        &[
-            "config",
-            &format!("branch.{default_branch}.remote"),
-            "origin",
-        ],
-        &bare,
-    )?;
-    run_git(
-        &[
-            "config",
-            &format!("branch.{default_branch}.merge"),
-            &default_ref,
-        ],
-        &bare,
-    )?;
 
     Ok(CloneResult {
         path: container,
