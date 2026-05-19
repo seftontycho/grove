@@ -606,6 +606,30 @@ pub fn worktree_prune(repo_path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// List configured remote names for a repository.
+pub fn list_remotes(repo_path: &Path) -> Result<Vec<String>> {
+    let layout = RepoLayout::detect(repo_path)?;
+    let output = Command::new("git")
+        .arg("remote")
+        .current_dir(layout.git_dir())
+        .output()
+        .context("Failed to run git remote")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!("git remote failed: {stderr}");
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let remotes = stdout
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+
+    Ok(remotes)
+}
+
 /// List local branches for a repository.
 pub fn list_local_branches(repo_path: &Path) -> Result<Vec<String>> {
     let layout = RepoLayout::detect(repo_path)?;
@@ -1021,6 +1045,35 @@ mod tests {
             !remote_cfg.status.success(),
             "new branch must not have an upstream"
         );
+    }
+
+    #[test]
+    fn list_remotes_returns_configured_remotes() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        let source = tmp.path().join("source");
+        init_bare_at(&source, "master").unwrap();
+
+        let dest = tmp.path().join("dest");
+        std::fs::create_dir_all(&dest).unwrap();
+        let cloned = clone_bare(source.to_str().unwrap(), &dest).unwrap();
+        let bare = cloned.path.join(".bare");
+
+        // Add a second remote.
+        run_git(
+            &[
+                "remote",
+                "add",
+                "upstream",
+                source.to_str().unwrap(),
+            ],
+            &bare,
+        )
+        .unwrap();
+
+        let mut remotes = list_remotes(&cloned.path).unwrap();
+        remotes.sort();
+        assert_eq!(remotes, vec!["origin", "upstream"]);
     }
 
     #[test]
