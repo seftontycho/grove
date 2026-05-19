@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use dialoguer::FuzzySelect;
 
 use crate::config::Config;
@@ -91,12 +91,17 @@ fn build_picker_entries(
 /// 3. `<known-remote>/<rest>` with no matching ref → reject (typo guard)
 /// 4. otherwise → `New`
 fn resolve_branch_arg(repo: &Repo, arg: &str) -> Result<BranchSource> {
-    let locals = git::list_local_branches(&repo.path).unwrap_or_default();
+    // Non-interactive path: propagate errors so a corrupt repo surfaces as a
+    // clear failure instead of silently falling through to "create new branch
+    // named <arg>".
+    let locals = git::list_local_branches(&repo.path)
+        .context("Failed to list local branches while resolving branch arg")?;
     if locals.iter().any(|b| b == arg) {
         return Ok(BranchSource::Local(arg.to_string()));
     }
 
-    let remote_refs = git::list_remote_branches(&repo.path).unwrap_or_default();
+    let remote_refs = git::list_remote_branches(&repo.path)
+        .context("Failed to list remote branches while resolving branch arg")?;
     if remote_refs.iter().any(|r| r == arg) {
         let (_remote, branch) = arg
             .split_once('/')
@@ -108,7 +113,8 @@ fn resolve_branch_arg(repo: &Repo, arg: &str) -> Result<BranchSource> {
     }
 
     if let Some((maybe_remote, _rest)) = arg.split_once('/') {
-        let remotes = git::list_remotes(&repo.path).unwrap_or_default();
+        let remotes = git::list_remotes(&repo.path)
+            .context("Failed to list remotes while resolving branch arg")?;
         if remotes.iter().any(|r| r == maybe_remote) {
             bail!(
                 "unknown branch '{arg}': '{maybe_remote}' is a remote but the ref does not exist. \
@@ -255,6 +261,7 @@ fn select_branch_source(repo: &Repo) -> Result<BranchSource> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::git;
 
     fn labels(entries: &[(String, BranchSource)]) -> Vec<&str> {
         entries.iter().map(|(l, _)| l.as_str()).collect()
@@ -332,8 +339,6 @@ mod tests {
         assert!(matches!(entries[0].1, BranchSource::New(_)));
     }
 
-    use crate::git;
-
     /// Build a container repo with exactly the requested local branches and
     /// remote-tracking refs under `origin`. `master` is always present locally
     /// (created by `init_repo`). Returns the container path.
@@ -346,49 +351,41 @@ mod tests {
         git::init_repo(&container, "master").unwrap();
         let bare = container.join(".bare");
 
-        // Get master's commit to point new refs at.
-        let master_commit = std::process::Command::new("git")
-            .args(["rev-parse", "refs/heads/master"])
-            .current_dir(&bare)
-            .output()
-            .unwrap();
-        let master_commit = String::from_utf8_lossy(&master_commit.stdout)
-            .trim()
-            .to_string();
+        let master_commit =
+            git::run_git_capture(&["rev-parse", "refs/heads/master"], &bare).unwrap();
 
-        // Seed additional local branches.
         for b in local_branches {
-            std::process::Command::new("git")
-                .args(["update-ref", &format!("refs/heads/{b}"), &master_commit])
-                .current_dir(&bare)
-                .status()
-                .unwrap();
+            git::run_git(
+                &["update-ref", &format!("refs/heads/{b}"), &master_commit],
+                &bare,
+            )
+            .unwrap();
         }
 
         // Configure a stub `origin` remote (URL is never fetched).
-        std::process::Command::new("git")
-            .args([
+        git::run_git(
+            &[
                 "remote",
                 "add",
                 "origin",
                 "https://example.invalid/source.git",
-            ])
-            .current_dir(&bare)
-            .status()
-            .unwrap();
+            ],
+            &bare,
+        )
+        .unwrap();
 
         // Seed remote-tracking refs directly. `list_remote_branches` reads
         // these as `origin/<branch>`.
         for b in remote_branches {
-            std::process::Command::new("git")
-                .args([
+            git::run_git(
+                &[
                     "update-ref",
                     &format!("refs/remotes/origin/{b}"),
                     &master_commit,
-                ])
-                .current_dir(&bare)
-                .status()
-                .unwrap();
+                ],
+                &bare,
+            )
+            .unwrap();
         }
 
         container

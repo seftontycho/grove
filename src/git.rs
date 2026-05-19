@@ -57,7 +57,7 @@ impl RepoLayout {
 
 /// Run `git <args>` with the working directory set to `git_dir`, expecting
 /// success.
-fn run_git(args: &[&str], git_dir: &Path) -> Result<()> {
+pub(crate) fn run_git(args: &[&str], git_dir: &Path) -> Result<()> {
     let status = Command::new("git")
         .args(args)
         .current_dir(git_dir)
@@ -72,7 +72,7 @@ fn run_git(args: &[&str], git_dir: &Path) -> Result<()> {
 /// Run `git <args>` with the working directory set to `git_dir` and return
 /// trimmed stdout. Stdin is empty, which `git hash-object --stdin` reads as
 /// empty content.
-fn run_git_capture(args: &[&str], git_dir: &Path) -> Result<String> {
+pub(crate) fn run_git_capture(args: &[&str], git_dir: &Path) -> Result<String> {
     let output = Command::new("git")
         .args(args)
         .current_dir(git_dir)
