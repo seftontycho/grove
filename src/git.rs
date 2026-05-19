@@ -820,8 +820,14 @@ mod tests {
         init_repo(&container, "master").unwrap();
         let wt = worktree_add(&container, "master", WorktreeSource::ExistingLocal).unwrap();
 
+        // git's worktree list output reports canonicalized paths. On macOS
+        // `$TMPDIR` lives under `/var/folders/...` which is a symlink to
+        // `/private/var/folders/...`, so compare canonical forms.
+        let wt = wt.canonicalize().unwrap();
         let trees = worktree_list(&container).unwrap();
-        assert!(trees.iter().any(|t| t.path == wt && !t.is_bare));
+        assert!(trees
+            .iter()
+            .any(|t| t.path.canonicalize().ok() == Some(wt.clone()) && !t.is_bare));
     }
 
     #[test]
