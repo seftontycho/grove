@@ -83,6 +83,44 @@ fn build_picker_entries(
     entries
 }
 
+/// Resolve a positional `<branch>` argument to a `BranchSource`.
+///
+/// Resolution order:
+/// 1. exact local match → `Local`
+/// 2. exact remote-ref match → `Remote { local, upstream }`
+/// 3. `<known-remote>/<rest>` with no matching ref → reject (typo guard)
+/// 4. otherwise → `New`
+fn resolve_branch_arg(repo: &Repo, arg: &str) -> Result<BranchSource> {
+    let locals = git::list_local_branches(&repo.path).unwrap_or_default();
+    if locals.iter().any(|b| b == arg) {
+        return Ok(BranchSource::Local(arg.to_string()));
+    }
+
+    let remote_refs = git::list_remote_branches(&repo.path).unwrap_or_default();
+    if remote_refs.iter().any(|r| r == arg) {
+        let (_remote, branch) = arg
+            .split_once('/')
+            .expect("remote ref always contains '/'");
+        return Ok(BranchSource::Remote {
+            local: branch.to_string(),
+            upstream: arg.to_string(),
+        });
+    }
+
+    if let Some((maybe_remote, _rest)) = arg.split_once('/') {
+        let remotes = git::list_remotes(&repo.path).unwrap_or_default();
+        if remotes.iter().any(|r| r == maybe_remote) {
+            bail!(
+                "unknown branch '{arg}': '{maybe_remote}' is a remote but the ref does not exist. \
+                 Did you mean to create '{arg}' as a new branch? It would nest under a directory \
+                 named '{maybe_remote}' — refusing."
+            );
+        }
+    }
+
+    Ok(BranchSource::New(arg.to_string()))
+}
+
 pub fn run(
     db: &Db,
     config: &Config,
@@ -100,22 +138,21 @@ pub fn run(
 
     db.touch_repo(repo.id)?;
 
-    let branch_name = match branch {
-        Some(b) => b.to_string(),
-        None => select_or_create_branch(&repo)?,
+    let branch_source = match branch {
+        Some(b) => resolve_branch_arg(&repo, b)?,
+        None => select_branch_source(&repo)?,
     };
+    let branch_name = branch_source.branch_name().to_string();
 
     let session = SessionName::new(&repo.name, &branch_name);
 
     // If a session already exists, attach to it instead of creating a new one.
-    // Each backend uses its own name format for the lookup.
     let sessions = mux.list_sessions()?;
     let exists = sessions
         .iter()
         .any(|s| s.name == session.as_zellij_name() || s.name == session.as_tmux_name());
 
     if exists {
-        // Determine which name format the session was stored under.
         let name = if sessions.iter().any(|s| s.name == session.as_zellij_name()) {
             session.as_zellij_name()
         } else {
@@ -132,7 +169,16 @@ pub fn run(
             path
         }
         None => {
-            let path = git::worktree_add(&repo.path, &branch_name, git::WorktreeSource::NewFromHead)?;
+            let wt_source = match &branch_source {
+                BranchSource::Local(_) => git::WorktreeSource::ExistingLocal,
+                BranchSource::Remote { upstream, .. } => {
+                    git::WorktreeSource::TrackingRemote {
+                        upstream: upstream.clone(),
+                    }
+                }
+                BranchSource::New(_) => git::WorktreeSource::NewFromHead,
+            };
+            let path = git::worktree_add(&repo.path, &branch_name, wt_source)?;
             println!("Created worktree at {}", path.display());
             path
         }
@@ -176,35 +222,34 @@ fn select_repo(db: &Db) -> Result<Repo> {
     Ok(repos[selection].clone())
 }
 
-fn select_or_create_branch(repo: &Repo) -> Result<String> {
-    let mut branches = git::list_remote_branches(&repo.path).unwrap_or_default();
+/// Interactive branch picker. Fetches, builds the unified list, returns
+/// the user's selection as a `BranchSource`.
+fn select_branch_source(repo: &Repo) -> Result<BranchSource> {
+    if let Err(e) = git::fetch_all(&repo.path) {
+        eprintln!("Warning: fetch failed: {e:#}");
+    }
 
-    let create_new = "[create new branch]".to_string();
-    branches.insert(0, create_new.clone());
+    let locals = git::list_local_branches(&repo.path).unwrap_or_default();
+    let remote_refs = git::list_remote_branches(&repo.path).unwrap_or_default();
+    let entries = build_picker_entries(&locals, &remote_refs);
 
+    let labels: Vec<&str> = entries.iter().map(|(l, _)| l.as_str()).collect();
     let selection = FuzzySelect::new()
         .with_prompt("Select or create a branch")
-        .items(&branches)
+        .items(&labels)
         .interact()?;
 
-    if branches[selection] == create_new {
+    let (_label, source) = entries[selection].clone();
+
+    // For the "[new]" entry, prompt for the real name now.
+    if matches!(source, BranchSource::New(_)) {
         let name: String = dialoguer::Input::new()
             .with_prompt("New branch name")
             .interact_text()?;
-        Ok(name)
-    } else {
-        // Strip remote prefix (e.g., "origin/feat" -> "feat")
-        let branch = branches[selection]
-            .split('/')
-            .skip(1)
-            .collect::<Vec<_>>()
-            .join("/");
-        if branch.is_empty() {
-            Ok(branches[selection].clone())
-        } else {
-            Ok(branch)
-        }
+        return Ok(BranchSource::New(name));
     }
+
+    Ok(source)
 }
 
 #[cfg(test)]
@@ -285,5 +330,131 @@ mod tests {
         let entries = build_picker_entries(&[], &[]);
         assert_eq!(labels(&entries), vec!["[new]    + create new branch"]);
         assert!(matches!(entries[0].1, BranchSource::New(_)));
+    }
+
+    use crate::git;
+
+    /// Build a container repo with exactly the requested local branches and
+    /// remote-tracking refs under `origin`. `master` is always present locally
+    /// (created by `init_repo`). Returns the container path.
+    fn make_test_repo(
+        tmpdir: &std::path::Path,
+        local_branches: &[&str],
+        remote_branches: &[&str],
+    ) -> std::path::PathBuf {
+        let container = tmpdir.join("repo");
+        git::init_repo(&container, "master").unwrap();
+        let bare = container.join(".bare");
+
+        // Get master's commit to point new refs at.
+        let master_commit = std::process::Command::new("git")
+            .args(["rev-parse", "refs/heads/master"])
+            .current_dir(&bare)
+            .output()
+            .unwrap();
+        let master_commit = String::from_utf8_lossy(&master_commit.stdout)
+            .trim()
+            .to_string();
+
+        // Seed additional local branches.
+        for b in local_branches {
+            std::process::Command::new("git")
+                .args(["update-ref", &format!("refs/heads/{b}"), &master_commit])
+                .current_dir(&bare)
+                .status()
+                .unwrap();
+        }
+
+        // Configure a stub `origin` remote (URL is never fetched).
+        std::process::Command::new("git")
+            .args([
+                "remote",
+                "add",
+                "origin",
+                "https://example.invalid/source.git",
+            ])
+            .current_dir(&bare)
+            .status()
+            .unwrap();
+
+        // Seed remote-tracking refs directly. `list_remote_branches` reads
+        // these as `origin/<branch>`.
+        for b in remote_branches {
+            std::process::Command::new("git")
+                .args([
+                    "update-ref",
+                    &format!("refs/remotes/origin/{b}"),
+                    &master_commit,
+                ])
+                .current_dir(&bare)
+                .status()
+                .unwrap();
+        }
+
+        container
+    }
+
+    fn fake_repo(path: std::path::PathBuf) -> crate::db::Repo {
+        crate::db::Repo {
+            id: 1,
+            name: "test".to_string(),
+            path,
+            url: None,
+            directory: None,
+            status: crate::db::RepoStatus::Active,
+            frecency: 0.0,
+            last_accessed_at: None,
+            created_at: "1970-01-01T00:00:00Z".to_string(),
+        }
+    }
+
+    #[test]
+    fn resolve_branch_arg_picks_local_first() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = make_test_repo(tmp.path(), &["feat"], &["feat"]);
+        let repo = fake_repo(path);
+
+        let src = resolve_branch_arg(&repo, "feat").unwrap();
+        assert!(matches!(src, BranchSource::Local(ref n) if n == "feat"));
+    }
+
+    #[test]
+    fn resolve_branch_arg_finds_remote_when_no_local() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = make_test_repo(tmp.path(), &[], &["feat"]);
+        let repo = fake_repo(path);
+
+        let src = resolve_branch_arg(&repo, "origin/feat").unwrap();
+        match src {
+            BranchSource::Remote { local, upstream } => {
+                assert_eq!(local, "feat");
+                assert_eq!(upstream, "origin/feat");
+            }
+            other => panic!("expected Remote, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn resolve_branch_arg_creates_new_for_unknown_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = make_test_repo(tmp.path(), &[], &[]);
+        let repo = fake_repo(path);
+
+        let src = resolve_branch_arg(&repo, "shiny").unwrap();
+        assert!(matches!(src, BranchSource::New(ref n) if n == "shiny"));
+    }
+
+    #[test]
+    fn resolve_branch_arg_rejects_unknown_remote_qualified_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = make_test_repo(tmp.path(), &[], &["feat"]);
+        let repo = fake_repo(path);
+
+        let err = resolve_branch_arg(&repo, "origin/typo").unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("unknown branch"),
+            "expected typo guard, got: {msg}"
+        );
     }
 }
