@@ -509,14 +509,36 @@ fn parse_worktree_list(output: &str) -> Result<Vec<Worktree>> {
     Ok(worktrees)
 }
 
-/// Create a new worktree. Returns the path to the created worktree.
-pub fn worktree_add(repo_path: &Path, branch: &str) -> Result<PathBuf> {
+/// How to materialize a branch when adding a worktree.
+#[derive(Debug, Clone)]
+pub enum WorktreeSource {
+    /// The branch already exists locally; just check it out into the worktree.
+    ExistingLocal,
+    /// Create the branch from a remote-tracking ref, with upstream set.
+    TrackingRemote { upstream: String },
+    /// Create a brand-new branch from HEAD.
+    NewFromHead,
+}
+
+/// Create a new worktree for `branch`. Returns the path to the created worktree.
+pub fn worktree_add(repo_path: &Path, branch: &str, source: WorktreeSource) -> Result<PathBuf> {
     let layout = RepoLayout::detect(repo_path)?;
     let worktree_dir = layout.worktree_path(branch);
 
-    let status = Command::new("git")
-        .args(["worktree", "add", "-B", branch])
-        .arg(&worktree_dir)
+    let mut cmd = Command::new("git");
+    cmd.arg("worktree").arg("add");
+    match &source {
+        WorktreeSource::ExistingLocal => {
+            cmd.arg(&worktree_dir).arg(branch);
+        }
+        WorktreeSource::TrackingRemote { upstream } => {
+            cmd.arg("-b").arg(branch).arg(&worktree_dir).arg(upstream);
+        }
+        WorktreeSource::NewFromHead => {
+            cmd.arg("-b").arg(branch).arg(&worktree_dir);
+        }
+    }
+    let status = cmd
         .current_dir(layout.git_dir())
         .status()
         .context("Failed to run git worktree add")?;
@@ -796,24 +818,156 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let container = tmp.path().join("myrepo");
         init_repo(&container, "master").unwrap();
-        let wt = worktree_add(&container, "master").unwrap();
+        let wt = worktree_add(&container, "master", WorktreeSource::ExistingLocal).unwrap();
 
         let trees = worktree_list(&container).unwrap();
         assert!(trees.iter().any(|t| t.path == wt && !t.is_bare));
     }
 
     #[test]
-    fn worktree_add_places_worktree_at_container_root() {
+    fn worktree_add_existing_local_places_worktree_at_container_root() {
         let tmp = tempfile::tempdir().unwrap();
         let container = tmp.path().join("myrepo");
         init_repo(&container, "master").unwrap();
 
-        let wt = worktree_add(&container, "master").unwrap();
+        let wt = worktree_add(&container, "master", WorktreeSource::ExistingLocal).unwrap();
 
         // Worktree is a direct child of the container, NOT under worktrees/.
         assert_eq!(wt, container.join("master"));
         assert!(wt.join(".git").is_file());
         assert!(!container.join("worktrees").exists());
+    }
+
+    #[test]
+    fn worktree_add_existing_local_does_not_reset() {
+        let tmp = tempfile::tempdir().unwrap();
+        let container = tmp.path().join("myrepo");
+        init_repo(&container, "master").unwrap();
+        let bare = container.join(".bare");
+
+        // Create a local branch `feat` advanced one commit past master.
+        // Use plumbing so we don't need a working tree.
+        let empty_tree =
+            run_git_capture(&["hash-object", "-w", "-t", "tree", "--stdin"], &bare).unwrap();
+        let master_commit =
+            run_git_capture(&["rev-parse", "refs/heads/master"], &bare).unwrap();
+        let feat_commit = run_git_capture(
+            &[
+                "-c",
+                "user.name=grove",
+                "-c",
+                "user.email=grove@localhost",
+                "commit-tree",
+                empty_tree.as_str(),
+                "-p",
+                master_commit.as_str(),
+                "-m",
+                "feat work",
+            ],
+            &bare,
+        )
+        .unwrap();
+        run_git(
+            &["update-ref", "refs/heads/feat", feat_commit.as_str()],
+            &bare,
+        )
+        .unwrap();
+
+        // Open the existing local branch as a worktree.
+        let wt = worktree_add(&container, "feat", WorktreeSource::ExistingLocal).unwrap();
+
+        // The worktree's HEAD must point at the existing feat commit,
+        // not at master.
+        let head = run_git_capture(&["rev-parse", "HEAD"], &wt).unwrap();
+        assert_eq!(head, feat_commit, "existing local branch must not be reset");
+    }
+
+    #[test]
+    fn worktree_add_tracking_remote_sets_upstream() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        // Build a bare "remote" with a `feat` branch.
+        let source = tmp.path().join("source");
+        init_bare_at(&source, "master").unwrap();
+        let empty_tree =
+            run_git_capture(&["hash-object", "-w", "-t", "tree", "--stdin"], &source).unwrap();
+        let master_commit =
+            run_git_capture(&["rev-parse", "refs/heads/master"], &source).unwrap();
+        let feat_commit = run_git_capture(
+            &[
+                "-c",
+                "user.name=grove",
+                "-c",
+                "user.email=grove@localhost",
+                "commit-tree",
+                empty_tree.as_str(),
+                "-p",
+                master_commit.as_str(),
+                "-m",
+                "feat on remote",
+            ],
+            &source,
+        )
+        .unwrap();
+        run_git(
+            &["update-ref", "refs/heads/feat", feat_commit.as_str()],
+            &source,
+        )
+        .unwrap();
+
+        // Clone it into a container layout, which sets up origin/* tracking refs.
+        let dest = tmp.path().join("dest");
+        std::fs::create_dir_all(&dest).unwrap();
+        let cloned = clone_bare(source.to_str().unwrap(), &dest).unwrap();
+
+        // Add a worktree that tracks origin/feat.
+        let wt = worktree_add(
+            &cloned.path,
+            "feat",
+            WorktreeSource::TrackingRemote {
+                upstream: "origin/feat".to_string(),
+            },
+        )
+        .unwrap();
+
+        // The local `feat` branch must be configured to track origin/feat.
+        let bare = cloned.path.join(".bare");
+        let remote_cfg = run_git_capture(&["config", "branch.feat.remote"], &bare).unwrap();
+        let merge_cfg = run_git_capture(&["config", "branch.feat.merge"], &bare).unwrap();
+        assert_eq!(remote_cfg, "origin");
+        assert_eq!(merge_cfg, "refs/heads/feat");
+
+        // And the worktree's HEAD must be at the remote's feat commit.
+        let head = run_git_capture(&["rev-parse", "HEAD"], &wt).unwrap();
+        assert_eq!(head, feat_commit);
+    }
+
+    #[test]
+    fn worktree_add_new_from_head_creates_branch() {
+        let tmp = tempfile::tempdir().unwrap();
+        let container = tmp.path().join("myrepo");
+        init_repo(&container, "master").unwrap();
+
+        // master exists from init_repo; create a brand-new branch off HEAD.
+        let wt = worktree_add(&container, "shiny", WorktreeSource::NewFromHead).unwrap();
+
+        assert_eq!(wt, container.join("shiny"));
+
+        let bare = container.join(".bare");
+        let branches =
+            run_git_capture(&["branch", "--format=%(refname:short)"], &bare).unwrap();
+        assert!(branches.lines().any(|b| b == "shiny"));
+
+        // No upstream config: brand-new branch should not track anything.
+        let remote_cfg = Command::new("git")
+            .args(["config", "branch.shiny.remote"])
+            .current_dir(&bare)
+            .output()
+            .unwrap();
+        assert!(
+            !remote_cfg.status.success(),
+            "new branch must not have an upstream"
+        );
     }
 
     #[test]

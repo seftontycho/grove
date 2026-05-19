@@ -55,7 +55,7 @@ pub fn run(
             path
         }
         None => {
-            let path = git::worktree_add(&repo.path, &branch_name)?;
+            let path = git::worktree_add(&repo.path, &branch_name, git::WorktreeSource::NewFromHead)?;
             println!("Created worktree at {}", path.display());
             path
         }
