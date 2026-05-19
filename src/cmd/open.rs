@@ -86,11 +86,18 @@ fn build_picker_entries(
 /// Resolve a positional `<branch>` argument to a `BranchSource`.
 ///
 /// Resolution order:
-/// 1. exact local match → `Local`
-/// 2. exact remote-ref match → `Remote { local, upstream }`
-/// 3. `<known-remote>/<rest>` with no matching ref → reject (typo guard)
-/// 4. otherwise → `New`
+/// 1. empty / whitespace → reject
+/// 2. exact local match → `Local`
+/// 3. exact remote-ref match — but apply the same shadow rule as the
+///    picker: if a local of the stripped name already exists, prefer it
+///    over creating a tracking branch that would collide.
+/// 4. `<known-remote>/<rest>` with no matching ref → reject (typo guard)
+/// 5. otherwise → `New`
 fn resolve_branch_arg(repo: &Repo, arg: &str) -> Result<BranchSource> {
+    if arg.trim().is_empty() {
+        bail!("branch name cannot be empty");
+    }
+
     // Non-interactive path: propagate errors so a corrupt repo surfaces as a
     // clear failure instead of silently falling through to "create new branch
     // named <arg>".
@@ -106,6 +113,13 @@ fn resolve_branch_arg(repo: &Repo, arg: &str) -> Result<BranchSource> {
         let (_remote, branch) = arg
             .split_once('/')
             .expect("remote ref always contains '/'");
+        // Mirror the picker's shadow rule: a local branch of the stripped
+        // name is the canonical entry. `git worktree add -b feat <path>
+        // origin/feat` would fail with "branch 'feat' already exists";
+        // return Local so the user opens the existing branch instead.
+        if locals.iter().any(|b| b == branch) {
+            return Ok(BranchSource::Local(branch.to_string()));
+        }
         return Ok(BranchSource::Remote {
             local: branch.to_string(),
             upstream: arg.to_string(),
@@ -247,10 +261,24 @@ fn select_branch_source(repo: &Repo) -> Result<BranchSource> {
 
     let (_label, source) = entries[selection].clone();
 
-    // For the "[new]" entry, prompt for the real name now.
+    // For the "[new]" entry, prompt for the real name now. Validate against
+    // empty input and against names that already exist locally — git itself
+    // would fail later with "branch already exists", but rejecting at the
+    // prompt gives a tighter feedback loop than crashing through to the git
+    // command.
     if matches!(source, BranchSource::New(_)) {
+        let locals_for_check = locals.clone();
         let name: String = dialoguer::Input::new()
             .with_prompt("New branch name")
+            .validate_with(move |input: &String| -> std::result::Result<(), &str> {
+                if input.trim().is_empty() {
+                    return Err("branch name cannot be empty");
+                }
+                if locals_for_check.iter().any(|b| b == input) {
+                    return Err("a local branch with that name already exists");
+                }
+                Ok(())
+            })
             .interact_text()?;
         return Ok(BranchSource::New(name));
     }
@@ -452,6 +480,43 @@ mod tests {
         assert!(
             msg.contains("unknown branch"),
             "expected typo guard, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn resolve_branch_arg_remote_qualified_with_local_shadow_returns_local() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Both a local feat AND a remote origin/feat exist. The user typed
+        // the remote-qualified form, but the local should win to avoid the
+        // "branch already exists" collision in `git worktree add -b`.
+        let path = make_test_repo(tmp.path(), &["feat"], &["feat"]);
+        let repo = fake_repo(path);
+
+        let src = resolve_branch_arg(&repo, "origin/feat").unwrap();
+        assert!(
+            matches!(src, BranchSource::Local(ref n) if n == "feat"),
+            "expected Local(feat) shadow, got {src:?}"
+        );
+    }
+
+    #[test]
+    fn resolve_branch_arg_rejects_empty_arg() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = make_test_repo(tmp.path(), &[], &[]);
+        let repo = fake_repo(path);
+
+        let err = resolve_branch_arg(&repo, "").unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("cannot be empty"),
+            "expected empty rejection, got: {msg}"
+        );
+
+        let err = resolve_branch_arg(&repo, "   ").unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("cannot be empty"),
+            "expected whitespace rejection, got: {msg}"
         );
     }
 }
