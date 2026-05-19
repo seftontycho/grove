@@ -1,0 +1,23 @@
+src/cmd/open.rs
+  a6e341bb7352deab 9-85,209-289
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "f0bc890c9486349b1722d38e4637f914d41f7f04",
+  "prompts": {
+    "a6e341bb7352deab": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_1bf6208e7ffeyqVUvE0u9xQchY",
+        "model": "anthropic/claude-opus-4-7"
+      },
+      "human_author": "Sefton de Pledge",
+      "messages": [],
+      "total_additions": 158,
+      "total_deletions": 0,
+      "accepted_lines": 158,
+      "overriden_lines": 0
+    }
+  }
+}
