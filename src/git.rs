@@ -558,17 +558,20 @@ pub fn worktree_add(repo_path: &Path, branch: &str, source: WorktreeSource) -> R
 }
 
 /// Fetch all remotes (with prune). Used to refresh remote-tracking refs
-/// before the branch picker.
+/// before the branch picker. Surfaces git's stderr on failure so the
+/// caller's warning ("Warning: fetch failed: ...") names the real cause
+/// (auth, network, bad config) instead of just "fetch failed".
 pub fn fetch_all(repo_path: &Path) -> Result<()> {
     let layout = RepoLayout::detect(repo_path)?;
-    let status = Command::new("git")
+    let output = Command::new("git")
         .args(["fetch", "--all", "--prune"])
         .current_dir(layout.git_dir())
-        .status()
+        .output()
         .context("Failed to run git fetch --all --prune")?;
 
-    if !status.success() {
-        bail!("git fetch --all --prune failed");
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!("git fetch --all --prune failed: {stderr}");
     }
     Ok(())
 }
@@ -674,8 +677,12 @@ pub fn list_remote_branches(repo_path: &Path) -> Result<Vec<String>> {
         .map(|l| l.trim().to_string())
         .filter(|l| !l.is_empty())
         // Drop symbolic refs: `git branch -r --format=%(refname:short)` shortens
-        // `refs/remotes/<remote>/HEAD` to the bare `<remote>` (no slash). Filter
-        // that out, and defensively any `*/HEAD` entries from older git versions.
+        // `refs/remotes/<remote>/HEAD` to the bare `<remote>` for the typical
+        // single-segment remote name (no slash), and to `<remote>/HEAD` for
+        // older git versions or trailing-HEAD cases. Both forms are filtered.
+        // Edge case: a remote whose name itself contains a slash would produce
+        // `<foo>/<bar>` here and survive; we accept that since `git remote add
+        // foo/bar` is exceedingly rare in practice.
         .filter(|l| l.contains('/') && !l.ends_with("/HEAD"))
         .collect();
 
@@ -919,20 +926,18 @@ mod tests {
         assert!(!container.join("worktrees").exists());
     }
 
-    #[test]
-    fn worktree_add_existing_local_does_not_reset() {
-        let tmp = tempfile::tempdir().unwrap();
-        let container = tmp.path().join("myrepo");
-        init_repo(&container, "master").unwrap();
-        let bare = container.join(".bare");
-
-        // Create a local branch `feat` advanced one commit past master.
-        // Use plumbing so we don't need a working tree.
+    /// Test helper: create `branch` in `bare`, advanced one empty commit past
+    /// `parent_branch`. Returns the new commit SHA so callers can assert
+    /// against it. Uses plumbing so no working tree is needed.
+    fn seed_branch(bare: &Path, parent_branch: &str, branch: &str, msg: &str) -> String {
         let empty_tree =
-            run_git_capture(&["hash-object", "-w", "-t", "tree", "--stdin"], &bare).unwrap();
-        let master_commit =
-            run_git_capture(&["rev-parse", "refs/heads/master"], &bare).unwrap();
-        let feat_commit = run_git_capture(
+            run_git_capture(&["hash-object", "-w", "-t", "tree", "--stdin"], bare).unwrap();
+        let parent = run_git_capture(
+            &["rev-parse", &format!("refs/heads/{parent_branch}")],
+            bare,
+        )
+        .unwrap();
+        let commit = run_git_capture(
             &[
                 "-c",
                 "user.name=grove",
@@ -941,18 +946,29 @@ mod tests {
                 "commit-tree",
                 empty_tree.as_str(),
                 "-p",
-                master_commit.as_str(),
+                parent.as_str(),
                 "-m",
-                "feat work",
+                msg,
             ],
-            &bare,
+            bare,
         )
         .unwrap();
         run_git(
-            &["update-ref", "refs/heads/feat", feat_commit.as_str()],
-            &bare,
+            &["update-ref", &format!("refs/heads/{branch}"), &commit],
+            bare,
         )
         .unwrap();
+        commit
+    }
+
+    #[test]
+    fn worktree_add_existing_local_does_not_reset() {
+        let tmp = tempfile::tempdir().unwrap();
+        let container = tmp.path().join("myrepo");
+        init_repo(&container, "master").unwrap();
+        let bare = container.join(".bare");
+
+        let feat_commit = seed_branch(&bare, "master", "feat", "feat work");
 
         // Open the existing local branch as a worktree.
         let wt = worktree_add(&container, "feat", WorktreeSource::ExistingLocal).unwrap();
@@ -970,31 +986,7 @@ mod tests {
         // Build a bare "remote" with a `feat` branch.
         let source = tmp.path().join("source");
         init_bare_at(&source, "master").unwrap();
-        let empty_tree =
-            run_git_capture(&["hash-object", "-w", "-t", "tree", "--stdin"], &source).unwrap();
-        let master_commit =
-            run_git_capture(&["rev-parse", "refs/heads/master"], &source).unwrap();
-        let feat_commit = run_git_capture(
-            &[
-                "-c",
-                "user.name=grove",
-                "-c",
-                "user.email=grove@localhost",
-                "commit-tree",
-                empty_tree.as_str(),
-                "-p",
-                master_commit.as_str(),
-                "-m",
-                "feat on remote",
-            ],
-            &source,
-        )
-        .unwrap();
-        run_git(
-            &["update-ref", "refs/heads/feat", feat_commit.as_str()],
-            &source,
-        )
-        .unwrap();
+        let feat_commit = seed_branch(&source, "master", "feat", "feat on remote");
 
         // Clone it into a container layout, which sets up origin/* tracking refs.
         let dest = tmp.path().join("dest");
@@ -1160,31 +1152,7 @@ mod tests {
         assert!(!before.lines().any(|b| b == "origin/feat"));
 
         // Push a new branch on the source.
-        let empty_tree =
-            run_git_capture(&["hash-object", "-w", "-t", "tree", "--stdin"], &source).unwrap();
-        let master_commit =
-            run_git_capture(&["rev-parse", "refs/heads/master"], &source).unwrap();
-        let feat_commit = run_git_capture(
-            &[
-                "-c",
-                "user.name=grove",
-                "-c",
-                "user.email=grove@localhost",
-                "commit-tree",
-                empty_tree.as_str(),
-                "-p",
-                master_commit.as_str(),
-                "-m",
-                "feat on remote",
-            ],
-            &source,
-        )
-        .unwrap();
-        run_git(
-            &["update-ref", "refs/heads/feat", feat_commit.as_str()],
-            &source,
-        )
-        .unwrap();
+        seed_branch(&source, "master", "feat", "feat on remote");
 
         // fetch_all should bring the new branch into the clone.
         fetch_all(&cloned.path).unwrap();
