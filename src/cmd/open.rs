@@ -6,6 +6,83 @@ use crate::db::{Db, Repo, RepoFilter, RepoStatus};
 use crate::git;
 use crate::multiplexer::{Multiplexer, SessionName};
 
+/// What the user picked (interactively or via positional arg). Carries
+/// enough information to dispatch to the right `git::WorktreeSource`.
+#[derive(Debug, Clone)]
+pub enum BranchSource {
+    /// Existing local branch — open it as-is, no reset.
+    Local(String),
+    /// Remote-tracking ref. `local` is the branch to create; `upstream` is
+    /// the full remote ref (e.g. "origin/feat").
+    Remote { local: String, upstream: String },
+    /// Brand-new branch from HEAD. The String is the name to create.
+    New(String),
+}
+
+impl BranchSource {
+    /// The local branch name this source produces, for session naming and
+    /// worktree path resolution.
+    pub fn branch_name(&self) -> &str {
+        match self {
+            BranchSource::Local(name) => name,
+            BranchSource::Remote { local, .. } => local,
+            BranchSource::New(name) => name,
+        }
+    }
+}
+
+/// Build the picker's display list from local + remote branch lists.
+///
+/// Output order: `[new]` first, then locals sorted alphabetically, then
+/// remotes sorted alphabetically. Any remote whose branch part shadows a
+/// local entry is omitted.
+fn build_picker_entries(
+    locals: &[String],
+    remote_refs: &[String],
+) -> Vec<(String, BranchSource)> {
+    let mut entries: Vec<(String, BranchSource)> = Vec::new();
+
+    entries.push((
+        "[new]    + create new branch".to_string(),
+        // Placeholder name; the caller prompts for the real one if this
+        // entry is selected.
+        BranchSource::New(String::new()),
+    ));
+
+    let mut sorted_locals: Vec<&String> = locals.iter().collect();
+    sorted_locals.sort();
+    for name in &sorted_locals {
+        entries.push((
+            format!("[local]  {}", name),
+            BranchSource::Local((*name).clone()),
+        ));
+    }
+
+    let local_set: std::collections::HashSet<&str> =
+        locals.iter().map(String::as_str).collect();
+
+    let mut sorted_remotes: Vec<&String> = remote_refs.iter().collect();
+    sorted_remotes.sort();
+    for remote_ref in &sorted_remotes {
+        let Some((_remote, branch)) = remote_ref.split_once('/') else {
+            // Defensive: list_remote_branches already filters these.
+            continue;
+        };
+        if local_set.contains(branch) {
+            continue;
+        }
+        entries.push((
+            format!("[remote] {}", remote_ref),
+            BranchSource::Remote {
+                local: branch.to_string(),
+                upstream: (*remote_ref).clone(),
+            },
+        ));
+    }
+
+    entries
+}
+
 pub fn run(
     db: &Db,
     config: &Config,
@@ -127,5 +204,86 @@ fn select_or_create_branch(repo: &Repo) -> Result<String> {
         } else {
             Ok(branch)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn labels(entries: &[(String, BranchSource)]) -> Vec<&str> {
+        entries.iter().map(|(l, _)| l.as_str()).collect()
+    }
+
+    #[test]
+    fn build_picker_entries_orders_new_then_locals_then_remotes() {
+        let entries = build_picker_entries(
+            &["master".to_string(), "feat/auth".to_string()],
+            &["origin/main".to_string(), "origin/release/1.2".to_string()],
+        );
+
+        assert_eq!(
+            labels(&entries),
+            vec![
+                "[new]    + create new branch",
+                "[local]  feat/auth",
+                "[local]  master",
+                "[remote] origin/main",
+                "[remote] origin/release/1.2",
+            ]
+        );
+    }
+
+    #[test]
+    fn build_picker_entries_hides_remotes_shadowed_by_locals() {
+        let entries = build_picker_entries(
+            &["feat".to_string()],
+            &["origin/feat".to_string(), "origin/main".to_string()],
+        );
+
+        let labels = labels(&entries);
+        assert!(labels.contains(&"[local]  feat"));
+        assert!(labels.contains(&"[remote] origin/main"));
+        assert!(
+            !labels.iter().any(|l| l.contains("origin/feat")),
+            "origin/feat must be hidden by local feat"
+        );
+    }
+
+    #[test]
+    fn build_picker_entries_keeps_multiple_remotes_for_same_branch_when_no_local() {
+        let entries = build_picker_entries(
+            &[],
+            &["origin/feat".to_string(), "upstream/feat".to_string()],
+        );
+
+        let labels = labels(&entries);
+        assert!(labels.contains(&"[remote] origin/feat"));
+        assert!(labels.contains(&"[remote] upstream/feat"));
+    }
+
+    #[test]
+    fn build_picker_entries_splits_remote_on_first_slash_only() {
+        let entries = build_picker_entries(&[], &["origin/release/1.2".to_string()]);
+
+        let (label, source) = entries
+            .iter()
+            .find(|(l, _)| l.starts_with("[remote]"))
+            .expect("remote entry");
+        assert_eq!(label, "[remote] origin/release/1.2");
+        match source {
+            BranchSource::Remote { local, upstream } => {
+                assert_eq!(local, "release/1.2");
+                assert_eq!(upstream, "origin/release/1.2");
+            }
+            other => panic!("expected Remote, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn build_picker_entries_returns_new_only_when_no_branches() {
+        let entries = build_picker_entries(&[], &[]);
+        assert_eq!(labels(&entries), vec!["[new]    + create new branch"]);
+        assert!(matches!(entries[0].1, BranchSource::New(_)));
     }
 }
