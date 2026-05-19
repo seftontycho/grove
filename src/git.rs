@@ -606,6 +606,30 @@ pub fn worktree_prune(repo_path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// List local branches for a repository.
+pub fn list_local_branches(repo_path: &Path) -> Result<Vec<String>> {
+    let layout = RepoLayout::detect(repo_path)?;
+    let output = Command::new("git")
+        .args(["branch", "--format=%(refname:short)"])
+        .current_dir(layout.git_dir())
+        .output()
+        .context("Failed to run git branch")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!("git branch failed: {stderr}");
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let branches = stdout
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+
+    Ok(branches)
+}
+
 /// List remote branches for a repository.
 pub fn list_remote_branches(repo_path: &Path) -> Result<Vec<String>> {
     let layout = RepoLayout::detect(repo_path)?;
@@ -997,6 +1021,26 @@ mod tests {
             !remote_cfg.status.success(),
             "new branch must not have an upstream"
         );
+    }
+
+    #[test]
+    fn list_local_branches_returns_seeded_branches() {
+        let tmp = tempfile::tempdir().unwrap();
+        let container = tmp.path().join("myrepo");
+        init_repo(&container, "master").unwrap();
+
+        // Add two more local branches via plumbing.
+        let bare = container.join(".bare");
+        let master_commit =
+            run_git_capture(&["rev-parse", "refs/heads/master"], &bare).unwrap();
+        for name in ["feat", "fix/typo"] {
+            let refname = format!("refs/heads/{name}");
+            run_git(&["update-ref", &refname, master_commit.as_str()], &bare).unwrap();
+        }
+
+        let mut branches = list_local_branches(&container).unwrap();
+        branches.sort();
+        assert_eq!(branches, vec!["feat", "fix/typo", "master"]);
     }
 
     #[test]
