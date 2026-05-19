@@ -673,6 +673,10 @@ pub fn list_remote_branches(repo_path: &Path) -> Result<Vec<String>> {
         .lines()
         .map(|l| l.trim().to_string())
         .filter(|l| !l.is_empty())
+        // Drop symbolic refs: `git branch -r --format=%(refname:short)` shortens
+        // `refs/remotes/<remote>/HEAD` to the bare `<remote>` (no slash). Filter
+        // that out, and defensively any `*/HEAD` entries from older git versions.
+        .filter(|l| l.contains('/') && !l.ends_with("/HEAD"))
         .collect();
 
     Ok(branches)
@@ -1045,6 +1049,46 @@ mod tests {
             !remote_cfg.status.success(),
             "new branch must not have an upstream"
         );
+    }
+
+    #[test]
+    fn list_remote_branches_filters_symbolic_refs() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        let source = tmp.path().join("source");
+        init_bare_at(&source, "master").unwrap();
+
+        let dest = tmp.path().join("dest");
+        std::fs::create_dir_all(&dest).unwrap();
+        let cloned = clone_bare(source.to_str().unwrap(), &dest).unwrap();
+        let bare = cloned.path.join(".bare");
+
+        // Manually create a symbolic ref refs/remotes/origin/HEAD -> refs/remotes/origin/master,
+        // which `git branch -r --format=%(refname:short)` shortens to the bare name "origin".
+        run_git(
+            &[
+                "symbolic-ref",
+                "refs/remotes/origin/HEAD",
+                "refs/remotes/origin/master",
+            ],
+            &bare,
+        )
+        .unwrap();
+
+        let branches = list_remote_branches(&cloned.path).unwrap();
+
+        // The bare "origin" entry (from the symbolic ref) must not appear.
+        assert!(
+            !branches.iter().any(|b| b == "origin"),
+            "bare remote-name short form must be filtered\nactual: {branches:?}"
+        );
+        // Defensive: any */HEAD entry must also be filtered.
+        assert!(
+            !branches.iter().any(|b| b.ends_with("/HEAD")),
+            "*/HEAD entries must be filtered\nactual: {branches:?}"
+        );
+        // Real branches still come through.
+        assert!(branches.iter().any(|b| b == "origin/master"));
     }
 
     #[test]
