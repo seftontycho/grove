@@ -557,6 +557,22 @@ pub fn worktree_add(repo_path: &Path, branch: &str, source: WorktreeSource) -> R
     Ok(worktree_dir)
 }
 
+/// Fetch all remotes (with prune). Used to refresh remote-tracking refs
+/// before the branch picker.
+pub fn fetch_all(repo_path: &Path) -> Result<()> {
+    let layout = RepoLayout::detect(repo_path)?;
+    let status = Command::new("git")
+        .args(["fetch", "--all", "--prune"])
+        .current_dir(layout.git_dir())
+        .status()
+        .context("Failed to run git fetch --all --prune")?;
+
+    if !status.success() {
+        bail!("git fetch --all --prune failed");
+    }
+    Ok(())
+}
+
 /// Remove a worktree.
 pub fn worktree_remove(repo_path: &Path, worktree_path: &Path) -> Result<()> {
     let layout = RepoLayout::detect(repo_path)?;
@@ -980,6 +996,63 @@ mod tests {
         assert!(
             !remote_cfg.status.success(),
             "new branch must not have an upstream"
+        );
+    }
+
+    #[test]
+    fn fetch_all_picks_up_new_remote_branches() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        // Build a bare "remote".
+        let source = tmp.path().join("source");
+        init_bare_at(&source, "master").unwrap();
+
+        // Clone it into a container.
+        let dest = tmp.path().join("dest");
+        std::fs::create_dir_all(&dest).unwrap();
+        let cloned = clone_bare(source.to_str().unwrap(), &dest).unwrap();
+        let bare = cloned.path.join(".bare");
+
+        // After the clone, origin/feat should NOT be present.
+        let before =
+            run_git_capture(&["branch", "-r", "--format=%(refname:short)"], &bare).unwrap();
+        assert!(!before.lines().any(|b| b == "origin/feat"));
+
+        // Push a new branch on the source.
+        let empty_tree =
+            run_git_capture(&["hash-object", "-w", "-t", "tree", "--stdin"], &source).unwrap();
+        let master_commit =
+            run_git_capture(&["rev-parse", "refs/heads/master"], &source).unwrap();
+        let feat_commit = run_git_capture(
+            &[
+                "-c",
+                "user.name=grove",
+                "-c",
+                "user.email=grove@localhost",
+                "commit-tree",
+                empty_tree.as_str(),
+                "-p",
+                master_commit.as_str(),
+                "-m",
+                "feat on remote",
+            ],
+            &source,
+        )
+        .unwrap();
+        run_git(
+            &["update-ref", "refs/heads/feat", feat_commit.as_str()],
+            &source,
+        )
+        .unwrap();
+
+        // fetch_all should bring the new branch into the clone.
+        fetch_all(&cloned.path).unwrap();
+
+        let after =
+            run_git_capture(&["branch", "-r", "--format=%(refname:short)"], &bare).unwrap();
+        assert!(
+            after.lines().any(|b| b == "origin/feat"),
+            "fetch_all should pull origin/feat\nactual: {after}"
         );
     }
 
