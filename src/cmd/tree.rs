@@ -17,14 +17,21 @@ pub fn list(db: &Db, repo_query: Option<&str>) -> Result<()> {
     for wt in &worktrees {
         let branch_label = wt.branch.as_deref().unwrap_or("(detached)");
         let bare_label = if wt.is_bare { " [bare]" } else { "" };
+        let stale_label = if is_stale(wt) { " [stale]" } else { "" };
         println!(
-            "  {branch_label}{bare_label}  {}  {}",
+            "  {branch_label}{bare_label}{stale_label}  {}  {}",
             wt.head.get(..8).unwrap_or(&wt.head),
             wt.path.display()
         );
     }
 
     Ok(())
+}
+
+/// A worktree is stale when its working directory no longer exists on disk.
+/// Bare entries point at the repo itself and are never considered stale.
+fn is_stale(wt: &git::Worktree) -> bool {
+    !wt.is_bare && !wt.path.exists()
 }
 
 pub fn close(db: &Db, mux: &dyn Multiplexer, query: Option<&str>) -> Result<()> {
@@ -112,11 +119,50 @@ pub fn close(db: &Db, mux: &dyn Multiplexer, query: Option<&str>) -> Result<()> 
     Ok(())
 }
 
-pub fn prune(db: &Db, repo_query: Option<&str>) -> Result<()> {
+pub fn prune(db: &Db, mux: &dyn Multiplexer, repo_query: Option<&str>, all: bool) -> Result<()> {
+    if all {
+        let repos = db.list_repos(RepoFilter {
+            status: Some(RepoStatus::Active),
+            ..Default::default()
+        })?;
+
+        if repos.is_empty() {
+            println!("No repos tracked.");
+            return Ok(());
+        }
+
+        for repo in &repos {
+            match prune_repo(mux, repo) {
+                Ok(n) => println!("Pruned {n} stale worktree(s) for '{}'", repo.name),
+                Err(e) => eprintln!("Failed to prune '{}': {e}", repo.name),
+            }
+        }
+        return Ok(());
+    }
+
     let repo = resolve_repo(db, repo_query)?;
-    git::worktree_prune(&repo.path)?;
-    println!("Pruned stale worktrees for '{}'", repo.name);
+    let n = prune_repo(mux, &repo)?;
+    println!("Pruned {n} stale worktree(s) for '{}'", repo.name);
     Ok(())
+}
+
+/// Prune stale worktrees for a single repo, killing the multiplexer session
+/// for each one before removing git's records. Returns the number of stale
+/// worktrees found.
+fn prune_repo(mux: &dyn Multiplexer, repo: &Repo) -> Result<usize> {
+    let worktrees = git::worktree_list(&repo.path)?;
+    let stale: Vec<_> = worktrees.iter().filter(|wt| is_stale(wt)).collect();
+
+    for wt in &stale {
+        let branch = extract_branch_name(wt.branch.as_deref());
+        let sn = SessionName::new(&repo.name, &branch);
+        // Best-effort: the session may not exist, and we try both name formats.
+        let _ = mux.kill_session(&sn.as_zellij_name());
+        let _ = mux.kill_session(&sn.as_tmux_name());
+    }
+
+    git::worktree_prune(&repo.path)?;
+    Ok(stale.len())
 }
 
 /// Actions that `close` can perform.
@@ -169,5 +215,41 @@ fn resolve_repo(db: &Db, query: Option<&str>) -> Result<Repo> {
 
             Ok(repos[selection].clone())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use git::Worktree;
+    use std::path::PathBuf;
+
+    fn worktree(path: PathBuf, is_bare: bool) -> Worktree {
+        Worktree {
+            path,
+            head: "deadbeef".to_string(),
+            branch: Some("refs/heads/main".to_string()),
+            is_bare,
+        }
+    }
+
+    #[test]
+    fn existing_directory_is_not_stale() {
+        let dir = tempfile::tempdir().unwrap();
+        let wt = worktree(dir.path().to_path_buf(), false);
+        assert!(!is_stale(&wt));
+    }
+
+    #[test]
+    fn missing_directory_is_stale() {
+        let wt = worktree(PathBuf::from("/no/such/grove/worktree"), false);
+        assert!(is_stale(&wt));
+    }
+
+    #[test]
+    fn bare_entry_is_never_stale() {
+        // Bare points at the repo itself; even a missing path must not count.
+        let wt = worktree(PathBuf::from("/no/such/grove/repo"), true);
+        assert!(!is_stale(&wt));
     }
 }

@@ -103,7 +103,11 @@ pub enum TreeCmd {
     /// Prune stale worktree entries
     Prune {
         /// Repo name or fuzzy query (interactive if omitted)
+        #[arg(conflicts_with = "all")]
         repo: Option<String>,
+        /// Prune every tracked repo
+        #[arg(long)]
+        all: bool,
     },
 }
 
