@@ -609,6 +609,69 @@ pub fn worktree_prune(repo_path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Directories under the worktree base that have no registered worktree.
+///
+/// This is the inverse of a stale worktree record: the directory exists on
+/// disk but git tracks no worktree for it (e.g. a checkout that was deleted
+/// from git's records but left behind, or a leftover from a failed removal).
+///
+/// The git directory and hidden (dotfile) entries are never reported, and a
+/// directory that merely *contains* a registered worktree — nested branch
+/// names such as `debug/feat` produce a `debug/` parent — is kept. Returned
+/// paths are sorted for stable output.
+pub fn orphan_worktree_dirs(repo_path: &Path) -> Result<Vec<PathBuf>> {
+    let layout = RepoLayout::detect(repo_path)?;
+    let base = layout.worktree_base();
+    let git_dir = layout.git_dir();
+
+    // Canonicalized paths of every registered worktree, for robust comparison
+    // against the (also canonicalized) candidate directories.
+    let registered: Vec<PathBuf> = worktree_list(repo_path)?
+        .into_iter()
+        .filter_map(|wt| wt.path.canonicalize().ok())
+        .collect();
+
+    let entries = match std::fs::read_dir(&base) {
+        Ok(entries) => entries,
+        // No worktree base yet (e.g. legacy repo with no worktrees) → nothing.
+        Err(_) => return Ok(Vec::new()),
+    };
+
+    let mut orphans = Vec::new();
+    for entry in entries {
+        let entry = entry?;
+        let path = entry.path();
+
+        if !path.is_dir() || path == git_dir {
+            continue;
+        }
+        // Never touch hidden directories (`.bare`, editor/config dirs, …).
+        if entry
+            .file_name()
+            .to_str()
+            .is_none_or(|name| name.starts_with('.'))
+        {
+            continue;
+        }
+
+        let canon = match path.canonicalize() {
+            Ok(canon) => canon,
+            Err(_) => continue,
+        };
+
+        // Keep the directory if it is, or contains, a registered worktree.
+        let is_live = registered
+            .iter()
+            .any(|wt| wt == &canon || wt.starts_with(&canon));
+        if !is_live {
+            orphans.push(path);
+        }
+    }
+
+    orphans.sort();
+    Ok(orphans)
+}
+
 /// List configured remote names for a repository.
 pub fn list_remotes(repo_path: &Path) -> Result<Vec<String>> {
     let layout = RepoLayout::detect(repo_path)?;
@@ -748,6 +811,37 @@ mod tests {
         assert!(matches!(layout, RepoLayout::Container { .. }));
         assert_eq!(layout.git_dir(), bare);
         assert_eq!(layout.worktree_path("feat"), tmp.path().join("feat"));
+    }
+
+    #[test]
+    fn orphan_dirs_excludes_registered_nested_and_hidden() {
+        let tmp = tempfile::tempdir().unwrap();
+        let container = tmp.path().join("repo");
+        std::fs::create_dir_all(&container).unwrap();
+        init_bare_at(&container.join(".bare"), "master").unwrap();
+        let bare = container.join(".bare");
+
+        // A registered worktree under a nested branch name → `debug/` parent.
+        let nested = container.join("debug").join("feat");
+        run_git(
+            &["worktree", "add", "-B", "debug/feat", nested.to_str().unwrap()],
+            &bare,
+        )
+        .unwrap();
+
+        // A leftover checkout directory with no registered worktree.
+        let orphan = container.join("leftover");
+        std::fs::create_dir_all(orphan.join("src")).unwrap();
+
+        let orphans = orphan_worktree_dirs(&container).unwrap();
+        let names: Vec<String> = orphans
+            .iter()
+            .map(|p| p.file_name().unwrap().to_str().unwrap().to_string())
+            .collect();
+
+        // `.bare` (hidden/git dir) and `debug` (contains a worktree) are kept;
+        // only the genuine leftover is reported.
+        assert_eq!(names, vec!["leftover"]);
     }
 
     #[test]

@@ -108,6 +108,10 @@ pub enum TreeCmd {
         /// Prune every tracked repo
         #[arg(long)]
         all: bool,
+        /// Also remove leftover directories that have no registered worktree
+        /// (lists them and prompts before deleting)
+        #[arg(long)]
+        orphans: bool,
     },
 }
 

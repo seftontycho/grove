@@ -1,5 +1,5 @@
-use anyhow::{bail, Result};
-use dialoguer::FuzzySelect;
+use anyhow::{bail, Context, Result};
+use dialoguer::{Confirm, FuzzySelect};
 
 use crate::db::{Db, Repo, RepoFilter, RepoStatus};
 use crate::git;
@@ -119,7 +119,13 @@ pub fn close(db: &Db, mux: &dyn Multiplexer, query: Option<&str>) -> Result<()> 
     Ok(())
 }
 
-pub fn prune(db: &Db, mux: &dyn Multiplexer, repo_query: Option<&str>, all: bool) -> Result<()> {
+pub fn prune(
+    db: &Db,
+    mux: &dyn Multiplexer,
+    repo_query: Option<&str>,
+    all: bool,
+    orphans: bool,
+) -> Result<()> {
     if all {
         let repos = db.list_repos(RepoFilter {
             status: Some(RepoStatus::Active),
@@ -132,8 +138,8 @@ pub fn prune(db: &Db, mux: &dyn Multiplexer, repo_query: Option<&str>, all: bool
         }
 
         for repo in &repos {
-            match prune_repo(mux, repo) {
-                Ok(n) => println!("Pruned {n} stale worktree(s) for '{}'", repo.name),
+            match prune_repo(mux, repo, orphans) {
+                Ok(outcome) => println!("{}", outcome.summary(&repo.name, orphans)),
                 Err(e) => eprintln!("Failed to prune '{}': {e}", repo.name),
             }
         }
@@ -141,15 +147,32 @@ pub fn prune(db: &Db, mux: &dyn Multiplexer, repo_query: Option<&str>, all: bool
     }
 
     let repo = resolve_repo(db, repo_query)?;
-    let n = prune_repo(mux, &repo)?;
-    println!("Pruned {n} stale worktree(s) for '{}'", repo.name);
+    let outcome = prune_repo(mux, &repo, orphans)?;
+    println!("{}", outcome.summary(&repo.name, orphans));
     Ok(())
 }
 
+/// What a single repo's prune removed.
+struct PruneOutcome {
+    stale_worktrees: usize,
+    orphan_dirs: usize,
+}
+
+impl PruneOutcome {
+    fn summary(&self, repo_name: &str, orphans: bool) -> String {
+        let mut s = format!("Pruned {} stale worktree(s)", self.stale_worktrees);
+        if orphans {
+            s.push_str(&format!(", removed {} orphan dir(s)", self.orphan_dirs));
+        }
+        s.push_str(&format!(" for '{repo_name}'"));
+        s
+    }
+}
+
 /// Prune stale worktrees for a single repo, killing the multiplexer session
-/// for each one before removing git's records. Returns the number of stale
-/// worktrees found.
-fn prune_repo(mux: &dyn Multiplexer, repo: &Repo) -> Result<usize> {
+/// for each one before removing git's records. When `orphans` is set, also
+/// offer to delete leftover directories that have no registered worktree.
+fn prune_repo(mux: &dyn Multiplexer, repo: &Repo, orphans: bool) -> Result<PruneOutcome> {
     let worktrees = git::worktree_list(&repo.path)?;
     let stale: Vec<_> = worktrees.iter().filter(|wt| is_stale(wt)).collect();
 
@@ -162,7 +185,51 @@ fn prune_repo(mux: &dyn Multiplexer, repo: &Repo) -> Result<usize> {
     }
 
     git::worktree_prune(&repo.path)?;
-    Ok(stale.len())
+
+    let orphan_dirs = if orphans {
+        remove_orphan_dirs(repo)?
+    } else {
+        0
+    };
+
+    Ok(PruneOutcome {
+        stale_worktrees: stale.len(),
+        orphan_dirs,
+    })
+}
+
+/// Find leftover directories with no registered worktree, list them, and —
+/// after explicit confirmation — delete them. Returns the number removed.
+fn remove_orphan_dirs(repo: &Repo) -> Result<usize> {
+    let dirs = git::orphan_worktree_dirs(&repo.path)?;
+    if dirs.is_empty() {
+        return Ok(0);
+    }
+
+    println!(
+        "Orphan directories in '{}' (no registered worktree):",
+        repo.name
+    );
+    for dir in &dirs {
+        println!("  {}", dir.display());
+    }
+
+    let confirmed = Confirm::new()
+        .with_prompt(format!("Delete the {} director(y/ies) above?", dirs.len()))
+        .default(false)
+        .interact()?;
+    if !confirmed {
+        println!("Skipped orphan directory removal.");
+        return Ok(0);
+    }
+
+    let mut removed = 0;
+    for dir in &dirs {
+        std::fs::remove_dir_all(dir)
+            .with_context(|| format!("Failed to remove {}", dir.display()))?;
+        removed += 1;
+    }
+    Ok(removed)
 }
 
 /// Actions that `close` can perform.
