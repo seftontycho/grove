@@ -527,6 +527,12 @@ pub enum WorktreeSource {
     NewFromHead,
 }
 
+/// The checkout path a worktree of `branch` would occupy, per the repo's
+/// on-disk layout. Does not touch the filesystem.
+pub fn worktree_path(repo_path: &Path, branch: &str) -> Result<PathBuf> {
+    Ok(RepoLayout::detect(repo_path)?.worktree_path(branch))
+}
+
 /// Create a new worktree for `branch`. Returns the path to the created worktree.
 pub fn worktree_add(repo_path: &Path, branch: &str, source: WorktreeSource) -> Result<PathBuf> {
     let layout = RepoLayout::detect(repo_path)?;

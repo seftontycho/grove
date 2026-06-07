@@ -182,32 +182,55 @@ pub fn run(
         return mux.attach_session(&name);
     }
 
-    // Create worktree (or reuse if it already exists).
-    let worktree_path = match find_existing_worktree(&repo, &branch_name)? {
-        Some(path) => {
-            println!("Reusing existing worktree at {}", path.display());
-            path
-        }
-        None => {
-            let wt_source = match &branch_source {
-                BranchSource::Local(_) => git::WorktreeSource::ExistingLocal,
-                BranchSource::Remote { upstream, .. } => {
-                    git::WorktreeSource::TrackingRemote {
-                        upstream: upstream.clone(),
-                    }
-                }
-                BranchSource::New(_) => git::WorktreeSource::NewFromHead,
-            };
-            let path = git::worktree_add(&repo.path, &branch_name, wt_source)?;
-            println!("Created worktree at {}", path.display());
-            path
-        }
-    };
+    // Create worktree (or reuse if a checkout already exists on disk).
+    let (worktree_path, created) = resolve_worktree_path(&repo, &branch_source)?;
+    if created {
+        println!("Created worktree at {}", worktree_path.display());
+    } else {
+        println!("Reusing existing worktree at {}", worktree_path.display());
+    }
 
     println!("Starting session '{session}'...");
     mux.create_session(&session, &worktree_path, &config.shell.to_string())?;
 
     Ok(())
+}
+
+/// Resolve the worktree path to open for `branch_source`, creating a new
+/// worktree only when nothing already occupies the target path.
+///
+/// Returns `(path, created)` where `created` is false when an existing
+/// checkout was reused. Resolution order:
+///   1. A worktree git already tracks for this branch → reuse it.
+///   2. A directory already sits at the target path — an orphan checkout git
+///      no longer tracks, or a leftover from a removed/migrated worktree.
+///      `git worktree add` would abort with "'<path>' already exists", so we
+///      open the directory as-is instead of crashing.
+///   3. Nothing on disk → create the worktree.
+fn resolve_worktree_path(
+    repo: &Repo,
+    branch_source: &BranchSource,
+) -> Result<(std::path::PathBuf, bool)> {
+    let branch = branch_source.branch_name();
+
+    if let Some(path) = find_existing_worktree(repo, branch)? {
+        return Ok((path, false));
+    }
+
+    let target = git::worktree_path(&repo.path, branch)?;
+    if target.exists() {
+        return Ok((target, false));
+    }
+
+    let wt_source = match branch_source {
+        BranchSource::Local(_) => git::WorktreeSource::ExistingLocal,
+        BranchSource::Remote { upstream, .. } => git::WorktreeSource::TrackingRemote {
+            upstream: upstream.clone(),
+        },
+        BranchSource::New(_) => git::WorktreeSource::NewFromHead,
+    };
+    let path = git::worktree_add(&repo.path, branch, wt_source)?;
+    Ok((path, true))
 }
 
 /// Check if a worktree for this branch already exists.
@@ -497,6 +520,39 @@ mod tests {
             matches!(src, BranchSource::Local(ref n) if n == "feat"),
             "expected Local(feat) shadow, got {src:?}"
         );
+    }
+
+    #[test]
+    fn resolve_worktree_path_opens_orphan_directory_instead_of_crashing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = make_test_repo(tmp.path(), &[], &[]);
+        let repo = fake_repo(path.clone());
+
+        // An orphan checkout: a non-empty directory at the worktree path that
+        // git does not track as a worktree. `git worktree add` would abort.
+        let orphan = path.join("staging");
+        std::fs::create_dir_all(&orphan).unwrap();
+        std::fs::write(orphan.join("leftover.txt"), "x").unwrap();
+
+        let (resolved, created) =
+            resolve_worktree_path(&repo, &BranchSource::New("staging".to_string())).unwrap();
+
+        assert_eq!(resolved, orphan);
+        assert!(!created, "existing directory should be reused, not created");
+    }
+
+    #[test]
+    fn resolve_worktree_path_creates_when_nothing_on_disk() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = make_test_repo(tmp.path(), &[], &[]);
+        let repo = fake_repo(path.clone());
+
+        let (resolved, created) =
+            resolve_worktree_path(&repo, &BranchSource::New("fresh".to_string())).unwrap();
+
+        assert_eq!(resolved, path.join("fresh"));
+        assert!(created, "a brand-new branch with no directory should be created");
+        assert!(resolved.join(".git").exists(), "should be a real worktree");
     }
 
     #[test]
