@@ -202,11 +202,15 @@ pub fn run(
 /// Returns `(path, created)` where `created` is false when an existing
 /// checkout was reused. Resolution order:
 ///   1. A worktree git already tracks for this branch → reuse it.
-///   2. A directory already sits at the target path — an orphan checkout git
-///      no longer tracks, or a leftover from a removed/migrated worktree.
-///      `git worktree add` would abort with "'<path>' already exists", so we
-///      open the directory as-is instead of crashing.
-///   3. Nothing on disk → create the worktree.
+///   2. Nothing on disk at the target path → create the worktree.
+///   3. A directory occupies the target path. `git worktree add` would abort
+///      with "'<path>' already exists", so instead of crashing we verify what
+///      is there and pick one of, in order: reuse it if already a registered
+///      worktree; `git worktree repair` it if its records merely drifted (e.g.
+///      a checkout relocated by `repo migrate`), then reuse; reuse the checkout
+///      as-is if it is a genuine but orphaned worktree of this repo whose
+///      records are gone (warning that records are missing); otherwise refuse,
+///      so a foreign directory never gets a branch checkout dropped onto it.
 fn resolve_worktree_path(
     repo: &Repo,
     branch_source: &BranchSource,
@@ -218,19 +222,49 @@ fn resolve_worktree_path(
     }
 
     let target = git::worktree_path(&repo.path, branch)?;
-    if target.exists() {
+    if !target.exists() {
+        let wt_source = match branch_source {
+            BranchSource::Local(_) => git::WorktreeSource::ExistingLocal,
+            BranchSource::Remote { upstream, .. } => git::WorktreeSource::TrackingRemote {
+                upstream: upstream.clone(),
+            },
+            BranchSource::New(_) => git::WorktreeSource::NewFromHead,
+        };
+        let path = git::worktree_add(&repo.path, branch, wt_source)?;
+        return Ok((path, true));
+    }
+
+    // (a) Already tracked at this path (e.g. a detached checkout, or one on a
+    // different branch than the name suggests).
+    if git::worktree_registered_at(&repo.path, &target)? {
         return Ok((target, false));
     }
 
-    let wt_source = match branch_source {
-        BranchSource::Local(_) => git::WorktreeSource::ExistingLocal,
-        BranchSource::Remote { upstream, .. } => git::WorktreeSource::TrackingRemote {
-            upstream: upstream.clone(),
-        },
-        BranchSource::New(_) => git::WorktreeSource::NewFromHead,
-    };
-    let path = git::worktree_add(&repo.path, branch, wt_source)?;
-    Ok((path, true))
+    // (b) Not tracked, but its admin records may have drifted — try to re-link.
+    // `repair` errors on directories it can't fix; treat that as "not repaired".
+    let _ = git::repair_worktree(&repo.path, &target);
+    if git::worktree_registered_at(&repo.path, &target)? {
+        println!("Repaired worktree records for {}", target.display());
+        return Ok((target, false));
+    }
+
+    // (c) Still untracked. Only reuse it if it is genuinely a worktree of THIS
+    // repo; its checkout is intact even though git lost the records.
+    if git::is_linked_worktree_dir(&repo.path, &target)? {
+        eprintln!(
+            "Warning: {} is an orphaned worktree (git records are missing); \
+             opening the existing checkout as-is.",
+            target.display()
+        );
+        return Ok((target, false));
+    }
+
+    // (d) A foreign directory we did not create. Refuse rather than clobber it.
+    bail!(
+        "{} already exists but is not a worktree of this repo; \
+         remove it or choose another branch.",
+        target.display()
+    );
 }
 
 /// Check if a worktree for this branch already exists.
@@ -523,22 +557,114 @@ mod tests {
     }
 
     #[test]
-    fn resolve_worktree_path_opens_orphan_directory_instead_of_crashing() {
+    fn resolve_worktree_path_reuses_registered_worktree_at_target() {
         let tmp = tempfile::tempdir().unwrap();
         let path = make_test_repo(tmp.path(), &[], &[]);
-        let repo = fake_repo(path.clone());
+        let bare = path.join(".bare");
 
-        // An orphan checkout: a non-empty directory at the worktree path that
-        // git does not track as a worktree. `git worktree add` would abort.
-        let orphan = path.join("staging");
-        std::fs::create_dir_all(&orphan).unwrap();
-        std::fs::write(orphan.join("leftover.txt"), "x").unwrap();
+        // A registered worktree sits at <container>/staging but is checked out
+        // on a *different* branch, so the branch-name lookup misses it. We must
+        // still recognise it as a real worktree and reuse it, not crash.
+        let target = path.join("staging");
+        git::run_git(
+            &["worktree", "add", "-b", "other", target.to_str().unwrap()],
+            &bare,
+        )
+        .unwrap();
+
+        let repo = fake_repo(path.clone());
+        let (resolved, created) =
+            resolve_worktree_path(&repo, &BranchSource::New("staging".to_string())).unwrap();
+
+        assert_eq!(resolved, target);
+        assert!(!created, "a registered worktree must be reused, not created");
+    }
+
+    #[test]
+    fn resolve_worktree_path_reuses_orphaned_worktree_with_missing_records() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = make_test_repo(tmp.path(), &[], &[]);
+        let bare = path.join(".bare");
+
+        // Create a real worktree, then delete git's admin entry for it. The
+        // checkout dir (with its `.git` pointer) survives as an orphan — git
+        // can neither list nor `repair` nor `add` over it.
+        let target = path.join("staging");
+        git::run_git(
+            &["worktree", "add", "-b", "staging", target.to_str().unwrap()],
+            &bare,
+        )
+        .unwrap();
+        std::fs::remove_dir_all(bare.join("worktrees").join("staging")).unwrap();
+
+        let repo = fake_repo(path.clone());
+        let (resolved, created) =
+            resolve_worktree_path(&repo, &BranchSource::New("staging".to_string())).unwrap();
+
+        assert_eq!(resolved, target);
+        assert!(!created, "an orphaned worktree's checkout should be reused");
+    }
+
+    #[test]
+    fn resolve_worktree_path_repairs_drifted_worktree_records() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = make_test_repo(tmp.path(), &[], &[]);
+        let bare = path.join(".bare");
+
+        // A detached worktree created elsewhere, then relocated on disk to the
+        // target path without telling git. Its admin entry still points at the
+        // old (now-missing) location, so it is neither tracked at the target
+        // nor caught by the branch lookup — only `git worktree repair` re-links
+        // it. This mirrors a checkout moved by `repo migrate`.
+        let elsewhere = path.join("elsewhere");
+        git::run_git(
+            &["worktree", "add", "--detach", elsewhere.to_str().unwrap()],
+            &bare,
+        )
+        .unwrap();
+        let target = path.join("staging");
+        std::fs::rename(&elsewhere, &target).unwrap();
+
+        let repo = fake_repo(path.clone());
+        assert!(
+            !git::worktree_registered_at(&repo.path, &target).unwrap(),
+            "precondition: drifted worktree is not yet tracked at target"
+        );
 
         let (resolved, created) =
             resolve_worktree_path(&repo, &BranchSource::New("staging".to_string())).unwrap();
 
-        assert_eq!(resolved, orphan);
-        assert!(!created, "existing directory should be reused, not created");
+        assert_eq!(resolved, target);
+        assert!(!created, "a repaired worktree must be reused, not created");
+        assert!(
+            git::worktree_registered_at(&repo.path, &target).unwrap(),
+            "repair should have re-linked the worktree at the target path"
+        );
+    }
+
+    #[test]
+    fn resolve_worktree_path_refuses_foreign_directory() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = make_test_repo(tmp.path(), &[], &[]);
+        let repo = fake_repo(path.clone());
+
+        // A non-worktree directory with user files sitting at the target path.
+        let foreign = path.join("staging");
+        std::fs::create_dir_all(&foreign).unwrap();
+        std::fs::write(foreign.join("important.txt"), "do not clobber").unwrap();
+
+        let err = resolve_worktree_path(&repo, &BranchSource::New("staging".to_string()))
+            .unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("not a worktree of this repo"),
+            "expected refusal to clobber foreign dir, got: {msg}"
+        );
+        // The user's file must be untouched.
+        assert_eq!(
+            std::fs::read_to_string(foreign.join("important.txt")).unwrap(),
+            "do not clobber"
+        );
     }
 
     #[test]

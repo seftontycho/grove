@@ -533,6 +533,64 @@ pub fn worktree_path(repo_path: &Path, branch: &str) -> Result<PathBuf> {
     Ok(RepoLayout::detect(repo_path)?.worktree_path(branch))
 }
 
+/// Canonicalize `p`, falling back to the path as-given if it can't be resolved
+/// (e.g. a component does not exist on disk).
+fn canonicalize_lenient(p: &Path) -> PathBuf {
+    p.canonicalize().unwrap_or_else(|_| p.to_path_buf())
+}
+
+/// Whether git currently tracks a (non-bare) worktree checked out at `target`.
+/// Compares canonicalized paths so symlinked roots (e.g. macOS `/tmp`) match.
+pub fn worktree_registered_at(repo_path: &Path, target: &Path) -> Result<bool> {
+    let target = canonicalize_lenient(target);
+    let worktrees = worktree_list(repo_path)?;
+    Ok(worktrees
+        .iter()
+        .any(|wt| !wt.is_bare && canonicalize_lenient(&wt.path) == target))
+}
+
+/// Repair a worktree's administrative link files (the `git worktree repair`
+/// command). Fixes a checkout whose recorded path drifted from its real
+/// location — e.g. after `repo migrate` relocates it. Errors (raised for dirs
+/// git can't repair) are surfaced to the caller, which treats them as
+/// "not repaired".
+pub fn repair_worktree(repo_path: &Path, target: &Path) -> Result<()> {
+    let layout = RepoLayout::detect(repo_path)?;
+    // Quiet stderr: repair is invoked speculatively and its failure (on dirs
+    // git can't fix) is an expected, handled outcome — not something to print.
+    let status = Command::new("git")
+        .args(["worktree", "repair"])
+        .arg(target)
+        .current_dir(layout.git_dir())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .context("Failed to run git worktree repair")?;
+    if !status.success() {
+        bail!("git worktree repair failed for {}", target.display());
+    }
+    Ok(())
+}
+
+/// Whether `target` is a linked worktree *of this repository* — i.e. it holds a
+/// `.git` file whose `gitdir:` pointer resolves under our bare repo's
+/// `worktrees/` admin area. True even when the admin entry has since been
+/// removed (an orphaned-but-genuine worktree), and false for unrelated
+/// directories, so callers can refuse to clobber foreign content.
+pub fn is_linked_worktree_dir(repo_path: &Path, target: &Path) -> Result<bool> {
+    let Ok(content) = std::fs::read_to_string(target.join(".git")) else {
+        return Ok(false);
+    };
+    let Some(gitdir) = content.lines().find_map(|l| l.strip_prefix("gitdir:")) else {
+        return Ok(false);
+    };
+    let layout = RepoLayout::detect(repo_path)?;
+    // `.bare`/the bare repo exists, so canonicalizing the admin root is sound;
+    // git writes the `gitdir:` pointer as an absolute, canonical path.
+    let admin_root = canonicalize_lenient(&layout.git_dir()).join("worktrees");
+    Ok(Path::new(gitdir.trim()).starts_with(&admin_root))
+}
+
 /// Create a new worktree for `branch`. Returns the path to the created worktree.
 pub fn worktree_add(repo_path: &Path, branch: &str, source: WorktreeSource) -> Result<PathBuf> {
     let layout = RepoLayout::detect(repo_path)?;
