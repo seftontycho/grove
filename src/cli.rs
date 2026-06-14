@@ -112,6 +112,11 @@ pub enum TreeCmd {
         /// (lists them and prompts before deleting)
         #[arg(long)]
         orphans: bool,
+        /// Also remove worktrees whose branch is merged into the base branch
+        /// or deleted upstream (worktree + branch + session; lists them and
+        /// prompts before deleting)
+        #[arg(long)]
+        merged: bool,
     },
 }
 

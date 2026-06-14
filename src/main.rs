@@ -64,9 +64,19 @@ fn main() -> Result<()> {
         Cmd::Tree(sub) => match sub {
             TreeCmd::List { repo } => cmd::tree::list(&db, repo.as_deref()),
             TreeCmd::Close { query } => cmd::tree::close(&db, mux.as_ref(), query.as_deref()),
-            TreeCmd::Prune { repo, all, orphans } => {
-                cmd::tree::prune(&db, mux.as_ref(), repo.as_deref(), *all, *orphans)
-            }
+            TreeCmd::Prune {
+                repo,
+                all,
+                orphans,
+                merged,
+            } => cmd::tree::prune(
+                &db,
+                mux.as_ref(),
+                repo.as_deref(),
+                *all,
+                *orphans,
+                *merged,
+            ),
         },
         Cmd::Session(sub) => match sub {
             SessionCmd::List => cmd::session::list(mux.as_ref()),

@@ -673,6 +673,86 @@ pub fn worktree_prune(repo_path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// The repository's base branch, resolved for prune's merged check.
+pub struct BaseBranch {
+    /// Local short name of the default branch (e.g. `main`). Used to avoid
+    /// pruning the base branch's own worktree.
+    pub name: String,
+    /// Ref to test ancestry against (e.g. `origin/main`, or `main` when the
+    /// repo has no origin). Prefers the remote-tracking ref so branches merged
+    /// on the remote are detected even if the local `<name>` ref lags behind.
+    pub git_ref: String,
+}
+
+/// Resolve the repository's base branch. Prefers the remote default
+/// (`refs/remotes/origin/HEAD` → `origin/<branch>`), falling back to the
+/// local `HEAD` branch for repos with no origin (e.g. those created by
+/// `grove repo new`).
+pub fn resolve_base_branch(repo_path: &Path) -> Result<BaseBranch> {
+    let layout = RepoLayout::detect(repo_path)?;
+    let git_dir = layout.git_dir();
+
+    // We query the fixed path `refs/remotes/origin/HEAD`, so its target is
+    // always `refs/remotes/origin/<branch>`; stripping that exact prefix
+    // yields the branch name even when the name itself contains slashes.
+    if let Ok(full) = run_git_capture(&["symbolic-ref", "refs/remotes/origin/HEAD"], &git_dir)
+        && let Some(name) = full.strip_prefix("refs/remotes/origin/")
+        && !name.is_empty()
+    {
+        return Ok(BaseBranch {
+            name: name.to_string(),
+            git_ref: format!("origin/{name}"),
+        });
+    }
+
+    let name = run_git_capture(&["symbolic-ref", "--short", "HEAD"], &git_dir)
+        .context("Failed to resolve base branch")?;
+    Ok(BaseBranch {
+        git_ref: name.clone(),
+        name,
+    })
+}
+
+/// Whether `branch`'s commits are fully contained in `base` — i.e. `branch`
+/// is an ancestor of `base`. Uses `git merge-base --is-ancestor`, which exits
+/// 0 for true and 1 for false.
+pub fn is_branch_merged(repo_path: &Path, branch: &str, base: &str) -> Result<bool> {
+    let layout = RepoLayout::detect(repo_path)?;
+    let branch_ref = format!("refs/heads/{branch}");
+    let status = Command::new("git")
+        .args(["merge-base", "--is-ancestor", &branch_ref, base])
+        .current_dir(layout.git_dir())
+        .status()
+        .context("Failed to run git merge-base --is-ancestor")?;
+    match status.code() {
+        Some(0) => Ok(true),
+        Some(1) => Ok(false),
+        _ => bail!("git merge-base --is-ancestor failed for '{branch}'"),
+    }
+}
+
+/// Whether `branch` tracked a remote branch that has since been deleted — git
+/// reports its upstream as `[gone]`. Requires up-to-date remote-tracking refs
+/// (run [`fetch_all`] first). A branch with no upstream is never gone.
+pub fn branch_upstream_gone(repo_path: &Path, branch: &str) -> Result<bool> {
+    let layout = RepoLayout::detect(repo_path)?;
+    let branch_ref = format!("refs/heads/{branch}");
+    let track = run_git_capture(
+        &["for-each-ref", "--format=%(upstream:track)", &branch_ref],
+        &layout.git_dir(),
+    )?;
+    Ok(track == "[gone]")
+}
+
+/// Delete a local branch. With `force`, uses `-D` (deletes regardless of merge
+/// state); otherwise `-d`, which git refuses unless the branch is merged to
+/// HEAD or its upstream.
+pub fn delete_branch(repo_path: &Path, branch: &str, force: bool) -> Result<()> {
+    let layout = RepoLayout::detect(repo_path)?;
+    let flag = if force { "-D" } else { "-d" };
+    run_git(&["branch", flag, branch], &layout.git_dir())
+}
+
 /// Directories under the worktree base that have no registered worktree.
 ///
 /// This is the inverse of a stale worktree record: the directory exists on
@@ -1341,5 +1421,112 @@ branch refs/heads/feat
         assert!(trees[0].is_bare);
         assert!(!trees[1].is_bare);
         assert_eq!(trees[1].branch.as_deref(), Some("refs/heads/feat"));
+    }
+
+    #[test]
+    fn is_branch_merged_true_for_ancestor() {
+        let tmp = tempfile::tempdir().unwrap();
+        let container = tmp.path().join("repo");
+        std::fs::create_dir_all(&container).unwrap();
+        init_bare_at(&container.join(".bare"), "master").unwrap();
+        let bare = container.join(".bare");
+
+        // feat = one commit past master; fast-forward master onto it so feat
+        // becomes an ancestor of master (simulates a merged branch).
+        let feat = seed_branch(&bare, "master", "feat", "feat work");
+        run_git(&["update-ref", "refs/heads/master", &feat], &bare).unwrap();
+
+        assert!(is_branch_merged(&container, "feat", "master").unwrap());
+    }
+
+    #[test]
+    fn is_branch_merged_false_for_divergent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let container = tmp.path().join("repo");
+        std::fs::create_dir_all(&container).unwrap();
+        init_bare_at(&container.join(".bare"), "master").unwrap();
+        let bare = container.join(".bare");
+
+        // feat has a commit master does not contain.
+        seed_branch(&bare, "master", "feat", "feat work");
+
+        assert!(!is_branch_merged(&container, "feat", "master").unwrap());
+    }
+
+    #[test]
+    fn branch_upstream_gone_detects_deleted_remote() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        // Build a "remote" with a feat branch and clone it (sets origin/*).
+        let source = tmp.path().join("source");
+        init_bare_at(&source, "master").unwrap();
+        seed_branch(&source, "master", "feat", "feat on remote");
+
+        let dest = tmp.path().join("dest");
+        std::fs::create_dir_all(&dest).unwrap();
+        let cloned = clone_bare(source.to_str().unwrap(), &dest).unwrap();
+        let bare = cloned.path.join(".bare");
+
+        // A local feat tracking origin/feat, plus a branch with no upstream.
+        run_git(&["branch", "feat", "origin/feat"], &bare).unwrap();
+        run_git(&["branch", "--set-upstream-to=origin/feat", "feat"], &bare).unwrap();
+        run_git(&["branch", "solo", "master"], &bare).unwrap();
+
+        // Upstream present → not gone; no upstream → not gone.
+        assert!(!branch_upstream_gone(&cloned.path, "feat").unwrap());
+        assert!(!branch_upstream_gone(&cloned.path, "solo").unwrap());
+
+        // Delete feat on the source and prune; its upstream is now gone.
+        run_git(&["update-ref", "-d", "refs/heads/feat"], &source).unwrap();
+        fetch_all(&cloned.path).unwrap();
+        assert!(branch_upstream_gone(&cloned.path, "feat").unwrap());
+    }
+
+    #[test]
+    fn resolve_base_branch_prefers_origin_head() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        let source = tmp.path().join("source");
+        init_bare_at(&source, "master").unwrap();
+
+        let dest = tmp.path().join("dest");
+        std::fs::create_dir_all(&dest).unwrap();
+        let cloned = clone_bare(source.to_str().unwrap(), &dest).unwrap();
+
+        let base = resolve_base_branch(&cloned.path).unwrap();
+        assert_eq!(base.name, "master");
+        assert_eq!(base.git_ref, "origin/master");
+    }
+
+    #[test]
+    fn resolve_base_branch_falls_back_to_local_head() {
+        let tmp = tempfile::tempdir().unwrap();
+        let container = tmp.path().join("repo");
+        init_repo(&container, "master").unwrap();
+
+        // No origin → fall back to the local default branch.
+        let base = resolve_base_branch(&container).unwrap();
+        assert_eq!(base.name, "master");
+        assert_eq!(base.git_ref, "master");
+    }
+
+    #[test]
+    fn delete_branch_force_removes_unmerged() {
+        let tmp = tempfile::tempdir().unwrap();
+        let container = tmp.path().join("repo");
+        std::fs::create_dir_all(&container).unwrap();
+        init_bare_at(&container.join(".bare"), "master").unwrap();
+        let bare = container.join(".bare");
+
+        // A divergent branch master does not contain.
+        seed_branch(&bare, "master", "feat", "feat work");
+
+        // -d refuses an unmerged branch; -D forces it.
+        assert!(delete_branch(&container, "feat", false).is_err());
+        assert!(delete_branch(&container, "feat", true).is_ok());
+
+        let branches =
+            run_git_capture(&["branch", "--format=%(refname:short)"], &bare).unwrap();
+        assert!(!branches.lines().any(|b| b == "feat"));
     }
 }

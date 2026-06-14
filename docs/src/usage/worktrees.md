@@ -39,9 +39,26 @@ If `query` is omitted, an interactive fuzzy list shows all non-bare worktrees fo
 ## Prune stale entries
 
 ```sh
-grove tree prune [repo]
+grove tree prune [repo] [--all] [--orphans] [--merged]
 ```
 
-Runs `git worktree prune` on the selected repository, removing any stale worktree metadata entries for directories that no longer exist on disk. If `repo` is omitted, grove presents an interactive selection prompt.
+Runs `git worktree prune` on the selected repository, removing any stale worktree metadata entries for directories that no longer exist on disk. If `repo` is omitted, grove presents an interactive selection prompt. Pass `--all` to sweep every tracked repo.
 
 This is safe to run at any time and is a lighter alternative to `grove tree close` when you just want to clean up metadata without interactively choosing a specific worktree.
+
+### Cleaning up merged branches
+
+By default `prune` only touches the filesystem — stale metadata, and (with `--orphans`) leftover directories that git no longer tracks. Add `--merged` to also clean up worktrees whose **branch is done**:
+
+```sh
+grove tree prune --merged [repo]
+```
+
+A worktree is a candidate when its branch is either:
+
+- **merged** into the base branch (`origin/HEAD`, or the local default branch for repos with no remote), or
+- **gone** — it tracked a remote branch that has since been deleted, the signal left behind by a squash-merge-then-delete (e.g. GitHub's default PR merge).
+
+grove lists the candidates grouped by reason, prompts once, then removes each confirmed worktree along with its branch and multiplexer session.
+
+Your local work is never at risk: removal goes through `git worktree remove` **without** `--force`, which refuses any worktree holding uncommitted or untracked files. Those are kept and reported rather than deleted. Merged branches are deleted with `git branch -d`; gone branches (whose content can't be verified locally) use `git branch -D` after the prompt.

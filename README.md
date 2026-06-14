@@ -187,12 +187,15 @@ Repos are sorted by **frecency** — a combination of frequency and recency — 
 Manage worktrees for a repository.
 
 ```sh
-grove tree list [repo]    # list all worktrees for a repo
-grove tree close [query]  # close a worktree and kill its session
-grove tree prune [repo]   # prune stale worktree entries
+grove tree list [repo]              # list all worktrees for a repo
+grove tree close [query]            # close a worktree and kill its session
+grove tree prune [repo]             # prune stale worktree entries
+grove tree prune [repo] --merged    # also remove merged / deleted-upstream branches
 ```
 
 `grove tree close` handles orphaned sessions — it will clean up a zellij session even if the worktree directory has already been removed.
+
+`grove tree prune --merged` additionally removes worktrees whose branch has been merged into the base branch or deleted upstream — cleaning up the worktree, its branch, and its session, while never touching a worktree that has uncommitted or untracked changes. Add `--orphans` to also delete leftover directories git no longer tracks, or `--all` to sweep every repo.
 
 ### `grove session`
 

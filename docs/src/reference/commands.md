@@ -132,12 +132,22 @@ Also surfaces orphaned sessions (session exists but worktree directory is gone).
 Prune stale worktree entries via `git worktree prune`.
 
 ```
-grove tree prune [repo]
+grove tree prune [repo] [--all] [--orphans] [--merged]
 ```
 
-| Argument | Description |
-|----------|-------------|
-| `repo` | Repo name or fuzzy substring. Interactive if omitted. |
+| Argument / Flag | Description |
+|-----------------|-------------|
+| `repo` | Repo name or fuzzy substring. Interactive if omitted. Conflicts with `--all`. |
+| `--all` | Prune every tracked repo instead of a single one. |
+| `--orphans` | Also remove leftover directories that have no registered worktree (lists them and prompts before deleting). |
+| `--merged` | Also remove worktrees whose branch has been merged into the base branch or deleted upstream, cleaning up the worktree, its branch, and its session (lists them and prompts before deleting). |
+
+With `--merged`, a worktree is a candidate when its branch is either fully
+merged into the base branch (`origin/HEAD`, or the local default branch for
+repos with no remote) or tracked a remote branch that has since been deleted
+(the squash-merge-then-delete workflow). Worktrees with uncommitted or
+untracked changes are never deleted — `git worktree remove` refuses them and
+grove reports them as kept.
 
 ---
 

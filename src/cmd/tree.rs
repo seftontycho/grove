@@ -125,6 +125,7 @@ pub fn prune(
     repo_query: Option<&str>,
     all: bool,
     orphans: bool,
+    merged: bool,
 ) -> Result<()> {
     if all {
         let repos = db.list_repos(RepoFilter {
@@ -138,8 +139,8 @@ pub fn prune(
         }
 
         for repo in &repos {
-            match prune_repo(mux, repo, orphans) {
-                Ok(outcome) => println!("{}", outcome.summary(&repo.name, orphans)),
+            match prune_repo(mux, repo, orphans, merged) {
+                Ok(outcome) => println!("{}", outcome.summary(&repo.name, orphans, merged)),
                 Err(e) => eprintln!("Failed to prune '{}': {e}", repo.name),
             }
         }
@@ -147,8 +148,8 @@ pub fn prune(
     }
 
     let repo = resolve_repo(db, repo_query)?;
-    let outcome = prune_repo(mux, &repo, orphans)?;
-    println!("{}", outcome.summary(&repo.name, orphans));
+    let outcome = prune_repo(mux, &repo, orphans, merged)?;
+    println!("{}", outcome.summary(&repo.name, orphans, merged));
     Ok(())
 }
 
@@ -156,13 +157,26 @@ pub fn prune(
 struct PruneOutcome {
     stale_worktrees: usize,
     orphan_dirs: usize,
+    merged: MergedOutcome,
 }
 
 impl PruneOutcome {
-    fn summary(&self, repo_name: &str, orphans: bool) -> String {
+    fn summary(&self, repo_name: &str, orphans: bool, merged: bool) -> String {
         let mut s = format!("Pruned {} stale worktree(s)", self.stale_worktrees);
         if orphans {
             s.push_str(&format!(", removed {} orphan dir(s)", self.orphan_dirs));
+        }
+        if merged {
+            s.push_str(&format!(
+                ", removed {} merged + {} gone worktree(s)",
+                self.merged.merged_removed, self.merged.gone_removed
+            ));
+            if self.merged.kept_dirty > 0 {
+                s.push_str(&format!(
+                    ", kept {} (uncommitted changes)",
+                    self.merged.kept_dirty
+                ));
+            }
         }
         s.push_str(&format!(" for '{repo_name}'"));
         s
@@ -172,7 +186,14 @@ impl PruneOutcome {
 /// Prune stale worktrees for a single repo, killing the multiplexer session
 /// for each one before removing git's records. When `orphans` is set, also
 /// offer to delete leftover directories that have no registered worktree.
-fn prune_repo(mux: &dyn Multiplexer, repo: &Repo, orphans: bool) -> Result<PruneOutcome> {
+/// When `merged` is set, also offer to remove worktrees whose branch is done
+/// (merged into the base branch or deleted upstream).
+fn prune_repo(
+    mux: &dyn Multiplexer,
+    repo: &Repo,
+    orphans: bool,
+    merged: bool,
+) -> Result<PruneOutcome> {
     let worktrees = git::worktree_list(&repo.path)?;
     let stale: Vec<_> = worktrees.iter().filter(|wt| is_stale(wt)).collect();
 
@@ -192,10 +213,180 @@ fn prune_repo(mux: &dyn Multiplexer, repo: &Repo, orphans: bool) -> Result<Prune
         0
     };
 
+    let merged = if merged {
+        prune_merged(mux, repo)?
+    } else {
+        MergedOutcome::default()
+    };
+
     Ok(PruneOutcome {
         stale_worktrees: stale.len(),
         orphan_dirs,
+        merged,
     })
+}
+
+/// Why a worktree's branch is considered "done".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DoneReason {
+    /// Branch is fully contained in the base branch.
+    Merged,
+    /// Branch tracked a remote branch that has since been deleted.
+    Gone,
+}
+
+/// Counts from a merged-branch prune pass.
+#[derive(Debug, Default)]
+struct MergedOutcome {
+    merged_removed: usize,
+    gone_removed: usize,
+    kept_dirty: usize,
+}
+
+/// Classify a worktree as a merged-branch prune candidate, given the
+/// already-computed `merged`/`gone` facts for its branch. Bare entries,
+/// detached worktrees, and the base branch's own worktree are never
+/// candidates. `merged` (the higher-confidence signal) takes precedence
+/// over `gone`.
+fn classify_worktree(
+    wt: &git::Worktree,
+    base_branch: &str,
+    merged: bool,
+    gone: bool,
+) -> Option<DoneReason> {
+    if wt.is_bare {
+        return None;
+    }
+    let branch = wt.branch.as_deref()?.strip_prefix("refs/heads/")?;
+    if branch == base_branch {
+        return None;
+    }
+    if merged {
+        Some(DoneReason::Merged)
+    } else if gone {
+        Some(DoneReason::Gone)
+    } else {
+        None
+    }
+}
+
+/// Find worktrees whose branch is merged into the base branch or whose
+/// upstream was deleted, confirm with the user, then remove each one
+/// (session + worktree + branch). Working-tree safety is delegated to
+/// `git worktree remove` (without `--force`), which refuses any checkout
+/// holding uncommitted or untracked files — so confirmed-but-dirty worktrees
+/// are kept and reported rather than destroyed.
+fn prune_merged(mux: &dyn Multiplexer, repo: &Repo) -> Result<MergedOutcome> {
+    // `[gone]` is only accurate against fresh remote-tracking refs. Best-effort:
+    // on failure (e.g. offline) the merged tier still works; only gone detection
+    // may be stale.
+    if let Err(e) = git::fetch_all(&repo.path) {
+        eprintln!("Warning: fetch failed: {e:#}");
+    }
+
+    let base = git::resolve_base_branch(&repo.path)?;
+    let worktrees = git::worktree_list(&repo.path)?;
+
+    // Classify each worktree. Skip bare/detached and the base branch before
+    // shelling out for the merge/gone facts.
+    let mut candidates: Vec<(git::Worktree, String, DoneReason)> = Vec::new();
+    for wt in worktrees {
+        let Some(branch) = wt
+            .branch
+            .as_deref()
+            .and_then(|b| b.strip_prefix("refs/heads/"))
+            .map(str::to_string)
+        else {
+            continue;
+        };
+        if wt.is_bare || branch == base.name {
+            continue;
+        }
+
+        let merged = git::is_branch_merged(&repo.path, &branch, &base.git_ref)?;
+        // `merged` wins; only check for a gone upstream otherwise.
+        let gone = !merged && git::branch_upstream_gone(&repo.path, &branch)?;
+
+        if let Some(reason) = classify_worktree(&wt, &base.name, merged, gone) {
+            candidates.push((wt, branch, reason));
+        }
+    }
+
+    if candidates.is_empty() {
+        return Ok(MergedOutcome::default());
+    }
+
+    // List grouped by tier, then confirm once for the whole set.
+    let merged_branches: Vec<&str> = candidates
+        .iter()
+        .filter(|(_, _, r)| *r == DoneReason::Merged)
+        .map(|(_, b, _)| b.as_str())
+        .collect();
+    let gone_branches: Vec<&str> = candidates
+        .iter()
+        .filter(|(_, _, r)| *r == DoneReason::Gone)
+        .map(|(_, b, _)| b.as_str())
+        .collect();
+
+    if !merged_branches.is_empty() {
+        println!("Merged into {} (safe to delete):", base.git_ref);
+        for branch in &merged_branches {
+            println!("  {branch}");
+        }
+    }
+    if !gone_branches.is_empty() {
+        println!("Upstream deleted — likely squash-merged, branch delete will be forced:");
+        for branch in &gone_branches {
+            println!("  {branch}");
+        }
+    }
+
+    let confirmed = Confirm::new()
+        .with_prompt(format!(
+            "Delete the {} worktree(s) above (worktree + branch + session)?",
+            candidates.len()
+        ))
+        .default(false)
+        .interact()?;
+    if !confirmed {
+        println!("Skipped merged-branch removal.");
+        return Ok(MergedOutcome::default());
+    }
+
+    let mut outcome = MergedOutcome::default();
+    for (wt, branch, reason) in &candidates {
+        // Best-effort: kill both session name forms.
+        let sn = SessionName::new(&repo.name, branch);
+        let _ = mux.kill_session(&sn.as_zellij_name());
+        let _ = mux.kill_session(&sn.as_tmux_name());
+
+        // Remove the worktree WITHOUT --force: git refuses dirty/untracked
+        // checkouts, which is exactly the safety guarantee we want. Keep and
+        // report those rather than forcing; do not touch their branch.
+        if let Err(e) = git::worktree_remove(&repo.path, &wt.path) {
+            eprintln!("  kept '{branch}': {e:#}");
+            outcome.kept_dirty += 1;
+            continue;
+        }
+
+        // Worktree gone → delete the branch. `-d` for merged (guaranteed to
+        // succeed, since we proved it's an ancestor of base); `-D` for gone
+        // (a squash-merged branch's commits aren't ancestors, so `-d` refuses).
+        let force = matches!(reason, DoneReason::Gone);
+        if let Err(e) = git::delete_branch(&repo.path, branch, force) {
+            eprintln!("  removed worktree '{branch}' but branch delete failed: {e:#}");
+        }
+
+        match reason {
+            DoneReason::Merged => outcome.merged_removed += 1,
+            DoneReason::Gone => outcome.gone_removed += 1,
+        }
+    }
+
+    // Tidy any records left dangling by the removals.
+    git::worktree_prune(&repo.path)?;
+
+    Ok(outcome)
 }
 
 /// Find leftover directories with no registered worktree, list them, and —
@@ -318,5 +509,58 @@ mod tests {
         // Bare points at the repo itself; even a missing path must not count.
         let wt = worktree(PathBuf::from("/no/such/grove/repo"), true);
         assert!(!is_stale(&wt));
+    }
+
+    /// A non-bare worktree on `branch`.
+    fn branch_worktree(branch: &str) -> Worktree {
+        Worktree {
+            path: PathBuf::from(format!("/repo/{branch}")),
+            head: "deadbeef".to_string(),
+            branch: Some(format!("refs/heads/{branch}")),
+            is_bare: false,
+        }
+    }
+
+    #[test]
+    fn classify_skips_bare() {
+        let wt = worktree(PathBuf::from("/repo"), true);
+        assert_eq!(classify_worktree(&wt, "main", true, true), None);
+    }
+
+    #[test]
+    fn classify_skips_base_branch() {
+        let wt = branch_worktree("main");
+        assert_eq!(classify_worktree(&wt, "main", true, false), None);
+    }
+
+    #[test]
+    fn classify_skips_detached() {
+        let mut wt = branch_worktree("feat");
+        wt.branch = None;
+        assert_eq!(classify_worktree(&wt, "main", true, true), None);
+    }
+
+    #[test]
+    fn classify_prefers_merged_over_gone() {
+        let wt = branch_worktree("feat");
+        assert_eq!(
+            classify_worktree(&wt, "main", true, true),
+            Some(DoneReason::Merged)
+        );
+    }
+
+    #[test]
+    fn classify_reports_gone_when_not_merged() {
+        let wt = branch_worktree("feat");
+        assert_eq!(
+            classify_worktree(&wt, "main", false, true),
+            Some(DoneReason::Gone)
+        );
+    }
+
+    #[test]
+    fn classify_skips_when_neither() {
+        let wt = branch_worktree("feat");
+        assert_eq!(classify_worktree(&wt, "main", false, false), None);
     }
 }
