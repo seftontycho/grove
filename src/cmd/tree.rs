@@ -281,7 +281,7 @@ fn prune_merged(mux: &dyn Multiplexer, repo: &Repo) -> Result<MergedOutcome> {
     // on failure (e.g. offline) the merged tier still works; only gone detection
     // may be stale.
     if let Err(e) = git::fetch_all(&repo.path) {
-        eprintln!("Warning: fetch failed: {e:#}");
+        eprintln!("[{}] warning: fetch failed: {e:#}", repo.name);
     }
 
     let base = git::resolve_base_branch(&repo.path)?;
@@ -316,7 +316,11 @@ fn prune_merged(mux: &dyn Multiplexer, repo: &Repo) -> Result<MergedOutcome> {
         return Ok(MergedOutcome::default());
     }
 
-    // List grouped by tier, then confirm once for the whole set.
+    // Decide each tier independently, so the user can (for example) delete
+    // the provably-merged branches but keep the ones whose upstream is merely
+    // gone. Every listing and prompt names the repo, so it's unambiguous which
+    // repo a decision applies to — important under `--all`, where prompts for
+    // several repos interleave.
     let merged_branches: Vec<&str> = candidates
         .iter()
         .filter(|(_, _, r)| *r == DoneReason::Merged)
@@ -328,33 +332,57 @@ fn prune_merged(mux: &dyn Multiplexer, repo: &Repo) -> Result<MergedOutcome> {
         .map(|(_, b, _)| b.as_str())
         .collect();
 
+    let mut remove_merged = false;
     if !merged_branches.is_empty() {
-        println!("Merged into {} (safe to delete):", base.git_ref);
+        println!("[{}] merged into {} (safe to delete):", repo.name, base.git_ref);
         for branch in &merged_branches {
             println!("  {branch}");
         }
+        remove_merged = Confirm::new()
+            .with_prompt(format!(
+                "[{}] delete these {} merged worktree(s)? (worktree + branch + session)",
+                repo.name,
+                merged_branches.len()
+            ))
+            .default(false)
+            .interact()?;
     }
+
+    let mut remove_gone = false;
     if !gone_branches.is_empty() {
-        println!("Upstream deleted — likely squash-merged, branch delete will be forced:");
+        println!(
+            "[{}] upstream deleted — likely squash-merged, branch delete will be forced:",
+            repo.name
+        );
         for branch in &gone_branches {
             println!("  {branch}");
         }
+        remove_gone = Confirm::new()
+            .with_prompt(format!(
+                "[{}] delete these {} gone worktree(s)? (worktree + branch + session, forces branch delete)",
+                repo.name,
+                gone_branches.len()
+            ))
+            .default(false)
+            .interact()?;
     }
 
-    let confirmed = Confirm::new()
-        .with_prompt(format!(
-            "Delete the {} worktree(s) above (worktree + branch + session)?",
-            candidates.len()
-        ))
-        .default(false)
-        .interact()?;
-    if !confirmed {
-        println!("Skipped merged-branch removal.");
+    if !remove_merged && !remove_gone {
+        println!("[{}] skipped merged-branch removal.", repo.name);
         return Ok(MergedOutcome::default());
     }
 
     let mut outcome = MergedOutcome::default();
     for (wt, branch, reason) in &candidates {
+        // Only act on tiers the user approved.
+        let approved = match reason {
+            DoneReason::Merged => remove_merged,
+            DoneReason::Gone => remove_gone,
+        };
+        if !approved {
+            continue;
+        }
+
         // Best-effort: kill both session name forms.
         let sn = SessionName::new(&repo.name, branch);
         let _ = mux.kill_session(&sn.as_zellij_name());
@@ -364,7 +392,7 @@ fn prune_merged(mux: &dyn Multiplexer, repo: &Repo) -> Result<MergedOutcome> {
         // checkouts, which is exactly the safety guarantee we want. Keep and
         // report those rather than forcing; do not touch their branch.
         if let Err(e) = git::worktree_remove(&repo.path, &wt.path) {
-            eprintln!("  kept '{branch}': {e:#}");
+            eprintln!("[{}] kept '{branch}': {e:#}", repo.name);
             outcome.kept_dirty += 1;
             continue;
         }
@@ -374,7 +402,10 @@ fn prune_merged(mux: &dyn Multiplexer, repo: &Repo) -> Result<MergedOutcome> {
         // (a squash-merged branch's commits aren't ancestors, so `-d` refuses).
         let force = matches!(reason, DoneReason::Gone);
         if let Err(e) = git::delete_branch(&repo.path, branch, force) {
-            eprintln!("  removed worktree '{branch}' but branch delete failed: {e:#}");
+            eprintln!(
+                "[{}] removed worktree '{branch}' but branch delete failed: {e:#}",
+                repo.name
+            );
         }
 
         match reason {
