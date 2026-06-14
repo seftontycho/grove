@@ -61,4 +61,10 @@ A worktree is a candidate when its branch is either:
 
 grove lists the candidates grouped by reason, prompts once, then removes each confirmed worktree along with its branch and multiplexer session.
 
-Your local work is never at risk: removal goes through `git worktree remove` **without** `--force`, which refuses any worktree holding uncommitted or untracked files. Those are kept and reported rather than deleted. Merged branches are deleted with `git branch -d`; gone branches (whose content can't be verified locally) use `git branch -D` after the prompt.
+Each tier is confirmed independently, so you can delete the merged worktrees while keeping the gone ones (or vice versa). Under `--all`, results are summarised in a single table listing only the repos that changed.
+
+Your local work is never at risk:
+
+- Removal goes through `git worktree remove` **without** `--force`, which refuses any worktree holding uncommitted or untracked files. Those are kept and reported rather than deleted.
+- **Locked** worktrees (`git worktree lock` — e.g. an in-progress agent worktree) are skipped entirely and never offered as candidates.
+- Merged branches are deleted once grove has verified they are an ancestor of the base branch; gone branches (whose content can't be verified locally) are only deleted after you confirm the forced delete.

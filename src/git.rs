@@ -454,6 +454,10 @@ pub struct Worktree {
     pub head: String,
     pub branch: Option<String>,
     pub is_bare: bool,
+    /// Whether git has the worktree locked (`git worktree lock`). Locked
+    /// worktrees are in active use — e.g. a Claude Code agent worktree — and
+    /// `git worktree remove` refuses them without `--force`.
+    pub locked: bool,
 }
 
 /// List worktrees for a repository.
@@ -480,6 +484,7 @@ fn parse_worktree_list(output: &str) -> Result<Vec<Worktree>> {
     let mut head = String::new();
     let mut branch: Option<String> = None;
     let mut is_bare = false;
+    let mut locked = false;
 
     for line in output.lines() {
         if let Some(p) = line.strip_prefix("worktree ") {
@@ -490,6 +495,9 @@ fn parse_worktree_list(output: &str) -> Result<Vec<Worktree>> {
             branch = Some(b.to_string());
         } else if line == "bare" {
             is_bare = true;
+        } else if line == "locked" || line.starts_with("locked ") {
+            // Porcelain emits `locked` alone or `locked <reason>`.
+            locked = true;
         } else if line.is_empty() {
             if let Some(p) = path.take() {
                 worktrees.push(Worktree {
@@ -497,8 +505,10 @@ fn parse_worktree_list(output: &str) -> Result<Vec<Worktree>> {
                     head: std::mem::take(&mut head),
                     branch: branch.take(),
                     is_bare,
+                    locked,
                 });
                 is_bare = false;
+                locked = false;
             }
         }
     }
@@ -510,6 +520,7 @@ fn parse_worktree_list(output: &str) -> Result<Vec<Worktree>> {
             head,
             branch,
             is_bare,
+            locked,
         });
     }
 
@@ -1421,6 +1432,27 @@ branch refs/heads/feat
         assert!(trees[0].is_bare);
         assert!(!trees[1].is_bare);
         assert_eq!(trees[1].branch.as_deref(), Some("refs/heads/feat"));
+        assert!(!trees[0].locked && !trees[1].locked);
+    }
+
+    #[test]
+    fn parse_worktree_list_detects_locked() {
+        // A locked entry carries a `locked` line, optionally with a reason.
+        let output = "\
+worktree /home/user/repo/agent
+HEAD abc123
+branch refs/heads/agent
+locked claude agent agent-abc
+
+worktree /home/user/repo/feat
+HEAD def456
+branch refs/heads/feat
+
+";
+        let trees = parse_worktree_list(output).unwrap();
+        assert_eq!(trees.len(), 2);
+        assert!(trees[0].locked, "first entry is locked");
+        assert!(!trees[1].locked, "second entry is not locked");
     }
 
     #[test]
@@ -1508,6 +1540,45 @@ branch refs/heads/feat
         let base = resolve_base_branch(&container).unwrap();
         assert_eq!(base.name, "master");
         assert_eq!(base.git_ref, "master");
+    }
+
+    #[test]
+    fn merged_branch_ahead_of_upstream_needs_force() {
+        // A branch can be merged into base (origin/master) yet still be ahead
+        // of its OWN upstream. `git branch -d` checks merged-ness against the
+        // upstream, not base, so it refuses — which is why the merged-tier
+        // prune force-deletes after proving ancestry to base.
+        let tmp = tempfile::tempdir().unwrap();
+
+        // Source with master + feat, both at the initial commit.
+        let source = tmp.path().join("source");
+        init_bare_at(&source, "master").unwrap();
+        let a = run_git_capture(&["rev-parse", "refs/heads/master"], &source).unwrap();
+        run_git(&["update-ref", "refs/heads/feat", &a], &source).unwrap();
+
+        // Clone (sets up origin/* tracking refs).
+        let dest = tmp.path().join("dest");
+        std::fs::create_dir_all(&dest).unwrap();
+        let cloned = clone_bare(source.to_str().unwrap(), &dest).unwrap();
+        let bare = cloned.path.join(".bare");
+
+        // Local feat tracks origin/feat (== A), then advances by one commit, so
+        // it is ahead of its upstream.
+        run_git(&["branch", "feat", "origin/feat"], &bare).unwrap();
+        run_git(&["branch", "--set-upstream-to=origin/feat", "feat"], &bare).unwrap();
+        let b = seed_branch(&bare, "feat", "feat", "B");
+
+        // That commit lands on the remote's master (the "merge"); refresh refs
+        // and advance local master too, so feat is merged to both base and HEAD.
+        run_git(&["push", "origin", &format!("{b}:refs/heads/master")], &bare).unwrap();
+        run_git(&["update-ref", "refs/heads/master", &b], &bare).unwrap();
+        fetch_all(&cloned.path).unwrap();
+
+        // grove classifies feat as merged into base...
+        assert!(is_branch_merged(&cloned.path, "feat", "origin/master").unwrap());
+        // ...but `-d` refuses it (ahead of origin/feat), while `-D` succeeds.
+        assert!(delete_branch(&cloned.path, "feat", false).is_err());
+        assert!(delete_branch(&cloned.path, "feat", true).is_ok());
     }
 
     #[test]

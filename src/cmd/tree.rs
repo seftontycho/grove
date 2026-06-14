@@ -1,5 +1,10 @@
 use anyhow::{bail, Context, Result};
+use console::style;
 use dialoguer::{Confirm, FuzzySelect};
+use tabled::settings::object::Rows;
+use tabled::settings::style::Style;
+use tabled::settings::{Alignment, Modify};
+use tabled::{Table, Tabled};
 
 use crate::db::{Db, Repo, RepoFilter, RepoStatus};
 use crate::git;
@@ -138,11 +143,30 @@ pub fn prune(
             return Ok(());
         }
 
+        // Collect outcomes and render one summary table at the end, listing
+        // only repos where something actually changed — sweeping dozens of
+        // repos otherwise drowns the result in "removed 0…0…0" lines.
+        let mut rows: Vec<PruneSummaryRow> = Vec::new();
         for repo in &repos {
             match prune_repo(mux, repo, orphans, merged) {
-                Ok(outcome) => println!("{}", outcome.summary(&repo.name, orphans, merged)),
-                Err(e) => eprintln!("Failed to prune '{}': {e}", repo.name),
+                Ok(outcome) if outcome.touched() => {
+                    rows.push(PruneSummaryRow::new(&repo.name, &outcome));
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    eprintln!("{}", style(format!("Failed to prune '{}': {e}", repo.name)).red());
+                }
             }
+        }
+
+        if rows.is_empty() {
+            println!("{}", style("Nothing to prune.").dim());
+        } else {
+            let mut table = Table::new(rows);
+            table
+                .with(Style::markdown())
+                .with(Modify::new(Rows::new(1..)).with(Alignment::left()));
+            println!("{table}");
         }
         return Ok(());
     }
@@ -180,6 +204,46 @@ impl PruneOutcome {
         }
         s.push_str(&format!(" for '{repo_name}'"));
         s
+    }
+
+    /// Whether this prune changed anything — used to decide which repos appear
+    /// in the `--all` summary table.
+    fn touched(&self) -> bool {
+        self.stale_worktrees > 0
+            || self.orphan_dirs > 0
+            || self.merged.merged_removed > 0
+            || self.merged.gone_removed > 0
+            || self.merged.kept_dirty > 0
+    }
+}
+
+/// One row of the `--all` summary table.
+#[derive(Tabled)]
+struct PruneSummaryRow {
+    #[tabled(rename = "Repo")]
+    repo: String,
+    #[tabled(rename = "Stale")]
+    stale: usize,
+    #[tabled(rename = "Orphans")]
+    orphans: usize,
+    #[tabled(rename = "Merged")]
+    merged: usize,
+    #[tabled(rename = "Gone")]
+    gone: usize,
+    #[tabled(rename = "Kept")]
+    kept: usize,
+}
+
+impl PruneSummaryRow {
+    fn new(repo: &str, outcome: &PruneOutcome) -> Self {
+        Self {
+            repo: repo.to_string(),
+            stale: outcome.stale_worktrees,
+            orphans: outcome.orphan_dirs,
+            merged: outcome.merged.merged_removed,
+            gone: outcome.merged.gone_removed,
+            kept: outcome.merged.kept_dirty,
+        }
     }
 }
 
@@ -244,17 +308,17 @@ struct MergedOutcome {
 }
 
 /// Classify a worktree as a merged-branch prune candidate, given the
-/// already-computed `merged`/`gone` facts for its branch. Bare entries,
-/// detached worktrees, and the base branch's own worktree are never
-/// candidates. `merged` (the higher-confidence signal) takes precedence
-/// over `gone`.
+/// already-computed `merged`/`gone` facts for its branch. Bare entries, locked
+/// worktrees (actively in use — e.g. a Claude Code agent), detached worktrees,
+/// and the base branch's own worktree are never candidates. `merged` (the
+/// higher-confidence signal) takes precedence over `gone`.
 fn classify_worktree(
     wt: &git::Worktree,
     base_branch: &str,
     merged: bool,
     gone: bool,
 ) -> Option<DoneReason> {
-    if wt.is_bare {
+    if wt.is_bare || wt.locked {
         return None;
     }
     let branch = wt.branch.as_deref()?.strip_prefix("refs/heads/")?;
@@ -281,7 +345,7 @@ fn prune_merged(mux: &dyn Multiplexer, repo: &Repo) -> Result<MergedOutcome> {
     // on failure (e.g. offline) the merged tier still works; only gone detection
     // may be stale.
     if let Err(e) = git::fetch_all(&repo.path) {
-        eprintln!("[{}] warning: fetch failed: {e:#}", repo.name);
+        eprintln!("{}", style(format!("[{}] warning: fetch failed: {e:#}", repo.name)).yellow());
     }
 
     let base = git::resolve_base_branch(&repo.path)?;
@@ -299,7 +363,9 @@ fn prune_merged(mux: &dyn Multiplexer, repo: &Repo) -> Result<MergedOutcome> {
         else {
             continue;
         };
-        if wt.is_bare || branch == base.name {
+        // Skip bare, locked (in active use), and the base branch before
+        // shelling out for the merge/gone facts.
+        if wt.is_bare || wt.locked || branch == base.name {
             continue;
         }
 
@@ -334,7 +400,15 @@ fn prune_merged(mux: &dyn Multiplexer, repo: &Repo) -> Result<MergedOutcome> {
 
     let mut remove_merged = false;
     if !merged_branches.is_empty() {
-        println!("[{}] merged into {} (safe to delete):", repo.name, base.git_ref);
+        println!(
+            "{}",
+            style(format!(
+                "[{}] merged into {} (safe to delete):",
+                repo.name, base.git_ref
+            ))
+            .green()
+            .bold()
+        );
         for branch in &merged_branches {
             println!("  {branch}");
         }
@@ -351,8 +425,13 @@ fn prune_merged(mux: &dyn Multiplexer, repo: &Repo) -> Result<MergedOutcome> {
     let mut remove_gone = false;
     if !gone_branches.is_empty() {
         println!(
-            "[{}] upstream deleted — likely squash-merged, branch delete will be forced:",
-            repo.name
+            "{}",
+            style(format!(
+                "[{}] upstream deleted — likely squash-merged, branch delete will be forced:",
+                repo.name
+            ))
+            .yellow()
+            .bold()
         );
         for branch in &gone_branches {
             println!("  {branch}");
@@ -368,7 +447,7 @@ fn prune_merged(mux: &dyn Multiplexer, repo: &Repo) -> Result<MergedOutcome> {
     }
 
     if !remove_merged && !remove_gone {
-        println!("[{}] skipped merged-branch removal.", repo.name);
+        println!("{}", style(format!("[{}] skipped merged-branch removal.", repo.name)).dim());
         return Ok(MergedOutcome::default());
     }
 
@@ -392,19 +471,27 @@ fn prune_merged(mux: &dyn Multiplexer, repo: &Repo) -> Result<MergedOutcome> {
         // checkouts, which is exactly the safety guarantee we want. Keep and
         // report those rather than forcing; do not touch their branch.
         if let Err(e) = git::worktree_remove(&repo.path, &wt.path) {
-            eprintln!("[{}] kept '{branch}': {e:#}", repo.name);
+            eprintln!("{}", style(format!("[{}] kept '{branch}': {e:#}", repo.name)).yellow());
             outcome.kept_dirty += 1;
             continue;
         }
 
-        // Worktree gone → delete the branch. `-d` for merged (guaranteed to
-        // succeed, since we proved it's an ancestor of base); `-D` for gone
-        // (a squash-merged branch's commits aren't ancestors, so `-d` refuses).
-        let force = matches!(reason, DoneReason::Gone);
-        if let Err(e) = git::delete_branch(&repo.path, branch, force) {
+        // Worktree gone → delete the branch ref, force in both tiers:
+        //  - Merged: we proved the branch is an ancestor of base, so every
+        //    commit is already in base — deleting the ref orphans nothing.
+        //  - Gone: the user explicitly confirmed a forced delete.
+        // Plain `git branch -d` is unsuitable: when a branch has an upstream it
+        // is ahead of, git refuses even though the work is already in base (it
+        // checks merged-ness against the upstream, not our base), which would
+        // strand the branch after its worktree was removed.
+        if let Err(e) = git::delete_branch(&repo.path, branch, true) {
             eprintln!(
-                "[{}] removed worktree '{branch}' but branch delete failed: {e:#}",
-                repo.name
+                "{}",
+                style(format!(
+                    "[{}] removed worktree '{branch}' but branch delete failed: {e:#}",
+                    repo.name
+                ))
+                .red()
             );
         }
 
@@ -519,6 +606,7 @@ mod tests {
             head: "deadbeef".to_string(),
             branch: Some("refs/heads/main".to_string()),
             is_bare,
+            locked: false,
         }
     }
 
@@ -542,13 +630,14 @@ mod tests {
         assert!(!is_stale(&wt));
     }
 
-    /// A non-bare worktree on `branch`.
+    /// A non-bare, unlocked worktree on `branch`.
     fn branch_worktree(branch: &str) -> Worktree {
         Worktree {
             path: PathBuf::from(format!("/repo/{branch}")),
             head: "deadbeef".to_string(),
             branch: Some(format!("refs/heads/{branch}")),
             is_bare: false,
+            locked: false,
         }
     }
 
@@ -568,6 +657,15 @@ mod tests {
     fn classify_skips_detached() {
         let mut wt = branch_worktree("feat");
         wt.branch = None;
+        assert_eq!(classify_worktree(&wt, "main", true, true), None);
+    }
+
+    #[test]
+    fn classify_skips_locked() {
+        // A locked worktree (e.g. a Claude Code agent) is in active use and
+        // must never be a prune candidate, even when its branch is merged.
+        let mut wt = branch_worktree("feat");
+        wt.locked = true;
         assert_eq!(classify_worktree(&wt, "main", true, true), None);
     }
 
