@@ -344,6 +344,7 @@ dependencies = [
  "console",
  "dialoguer",
  "directories",
+ "libc",
  "minijinja",
  "rusqlite",
  "serde",

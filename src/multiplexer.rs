@@ -1,6 +1,10 @@
 use anyhow::Result;
-use minijinja::{context, Environment, Value};
+#[cfg(unix)]
+use directories::ProjectDirs;
+use minijinja::{Environment, Value, context};
 use std::path::Path;
+#[cfg(unix)]
+use std::path::PathBuf;
 
 use crate::config;
 
@@ -100,9 +104,13 @@ impl SessionName {
     /// Canonical form used by zellij: `repo:branch`.
     /// Zellij does not allow `/` in session names, so `/` is replaced with `:`.
     pub fn as_zellij_name(&self) -> String {
+        self.as_zellij_name_with_max_bytes(zellij_session_name_max_bytes())
+    }
+
+    fn as_zellij_name_with_max_bytes(&self, max_bytes: usize) -> String {
         let repo = self.repo.replace('/', ":");
         let branch = self.branch.replace('/', ":");
-        format!("{}:{}", repo, branch)
+        shorten_with_hash(&format!("{}:{}", repo, branch), max_bytes)
     }
 
     /// Sanitized form used by tmux (no `/` allowed): `repo-branch`.
@@ -113,8 +121,86 @@ impl SessionName {
     }
 }
 
+fn shorten_with_hash(value: &str, max_bytes: usize) -> String {
+    if value.len() <= max_bytes {
+        return value.to_string();
+    }
+
+    // FNV-1a keeps shortened names stable across Grove versions and processes.
+    let hash = value.bytes().fold(0x811c9dc5_u32, |hash, byte| {
+        (hash ^ byte as u32).wrapping_mul(0x01000193)
+    });
+    let suffix = format!("-{hash:08x}");
+
+    if max_bytes <= suffix.len() {
+        return suffix[suffix.len() - max_bytes..].to_string();
+    }
+
+    let prefix_bytes = max_bytes - suffix.len();
+    let prefix_end = value
+        .char_indices()
+        .take_while(|(index, character)| index + character.len_utf8() <= prefix_bytes)
+        .map(|(index, character)| index + character.len_utf8())
+        .last()
+        .unwrap_or(0);
+    format!("{}{}", &value[..prefix_end], suffix)
+}
+
+#[cfg(unix)]
+fn zellij_session_name_max_bytes() -> usize {
+    use std::os::unix::ffi::OsStrExt;
+
+    let socket_root = std::env::var_os("ZELLIJ_SOCKET_DIR")
+        .map(PathBuf::from)
+        .or_else(|| {
+            ProjectDirs::from("org", "Zellij Contributors", "Zellij")
+                .and_then(|dirs| dirs.runtime_dir().map(Path::to_path_buf))
+        })
+        .unwrap_or_else(|| {
+            // SAFETY: geteuid has no preconditions and does not dereference pointers.
+            let uid = unsafe { libc::geteuid() };
+            std::env::temp_dir().join(format!("zellij-{uid}"))
+        });
+    let socket_dir = socket_root.join("contract_version_1");
+    let socket_max_bytes: usize = if cfg!(target_os = "macos") { 104 } else { 108 };
+
+    socket_max_bytes
+        .saturating_sub(socket_dir.as_os_str().as_bytes().len())
+        .saturating_sub(2)
+}
+
+#[cfg(not(unix))]
+fn zellij_session_name_max_bytes() -> usize {
+    usize::MAX
+}
+
 impl std::fmt::Display for SessionName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}/{}", self.repo, self.branch)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{SessionName, shorten_with_hash};
+
+    #[test]
+    fn zellij_name_fits_available_socket_path_budget() {
+        let name = SessionName::new("spork", "mcasonsnow/REL-4655");
+
+        assert!(name.as_zellij_name_with_max_bytes(24).len() <= 24);
+    }
+
+    #[test]
+    fn shortened_zellij_names_remain_distinct() {
+        let first = shorten_with_hash("spork:mcasonsnow:REL-4655", 24);
+        let second = shorten_with_hash("spork:mcasonsnow:REL-4656", 24);
+
+        assert_ne!(first, second);
+    }
+
+    #[test]
+    fn short_zellij_names_are_unchanged() {
+        assert_eq!(shorten_with_hash("grove:main", 24), "grove:main");
     }
 }
