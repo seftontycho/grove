@@ -1,0 +1,31 @@
+Cargo.lock
+  s_c9ff5e0333d282::t_0fd1e36541dc4f 347
+Cargo.toml
+  s_78fd5fb09f5927::t_9a406ef1f9de34 20
+src/multiplexer.rs
+  s_78fd5fb09f5927::t_387647e511a122 2-4,6-7,107-110,113,124-176,182-206
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "14a527013938c9fc1b7947e9a00855c255c2dc29",
+  "prompts": {},
+  "sessions": {
+    "s_78fd5fb09f5927": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0aa7e-a37b-7e01-852e-020e6a875b22",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sefton de Pledge <sefton@cloudflare.com>"
+    },
+    "s_c9ff5e0333d282": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0afc0-f110-7a41-a00f-1031d4475299",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sefton de Pledge <sefton@cloudflare.com>"
+    }
+  }
+}
